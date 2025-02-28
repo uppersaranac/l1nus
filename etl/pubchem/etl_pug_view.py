@@ -67,11 +67,11 @@ def save_summaries(summaries, output_dir, start_cid, end_cid):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download PubChem summaries.")
     parser.add_argument("--start_cid", type=int, default=1, help="Starting CID")
-    parser.add_argument("--end_cid", type=int, default=10000, help="Ending CID")
+    parser.add_argument("--end_cid", type=int, default=1000000, help="Ending CID")
     parser.add_argument("--output_dir", default='pubchem', type=str, help="Output directory")
     parser.add_argument("--state_file", type=str, default='pubchem_state', help="State file path")
     parser.add_argument("--cids_per_file", type=int, default=1000, help="Number of CIDs per file")
-    parser.add_argument("--cids_per_second", type=int, default=1, help="Number of CIDs to download per second")
+    parser.add_argument("--cids_per_second", type=int, default=4, help="Number of CIDs to download per second")
     parser.add_argument("--throttle_wait_time", type=int, default=300, help="Throttle wait time in seconds")
 
     args = parser.parse_args()
