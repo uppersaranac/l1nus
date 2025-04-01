@@ -39,6 +39,20 @@ def download_pubchem_summaries(start_cid, end_cid, output_dir, state_file, cids_
                 time.sleep(max(0, delay_between_requests - elapsed_time))
                 continue
 
+            response = response.json()
+            if 'Fault' in response:
+                print(f"Error downloading CID {cid}: {response['Fault']['Message']}")
+                time.sleep(throttle_wait_time)
+                continue
+            if 'Record' not in response:
+                print(f"Error downloading CID {cid}: No Record found")
+                time.sleep(throttle_wait_time)
+                continue
+            if response['Record']['Section']['TOCHeading'][0] != 'Preferred Compound':
+                print(f"Error downloading CID {cid}: No Record found")
+                time.sleep(throttle_wait_time)
+                continue           
+
             summaries.append(response.json())
             if len(summaries) >= cids_per_file:
                 # do not assume the cids are continuous. You must keep track of the starting cid to name the file
