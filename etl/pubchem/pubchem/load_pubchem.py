@@ -97,7 +97,6 @@ def parse_molecule(mol):
         value = mol.GetProp(prop) if mol.HasProp(prop) else None
         arrow_type = cast_map.get(col)
         data[col] = cast_value(value, arrow_type)
-    print(data)
     return data
 
 
@@ -110,10 +109,10 @@ def stream_sdf_files(filepaths, max_records):
             for mol in suppl:
                 if mol is None:
                     continue
-                prop_names = mol.GetPropNames()
-                for name in prop_names:
-                    value = mol.GetProp(name)
-                    print(f'{name}: {value}')
+                # prop_names = mol.GetPropNames()
+                # for name in prop_names:
+                #     value = mol.GetProp(name)
+                #     print(f'{name}: {value}')
                 yield parse_molecule(mol)
                 count += 1
                 if max_records and count >= max_records:
