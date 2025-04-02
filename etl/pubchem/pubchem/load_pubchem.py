@@ -1,171 +1,151 @@
 import argparse
 import glob
 import gzip
-import psycopg2
+import os
 from rdkit import Chem
-from rdkit.Chem import SDMolSupplier
+import pyarrow as pa
+import pyarrow.ipc as ipc
+from pathlib import Path
 
-"""
-CREATE TABLE compound (
-    cid INTEGER PRIMARY KEY,
-    complexity DOUBLE PRECISION,
-    hbond_acceptor INTEGER,
-    hbond_donor INTEGER,
-    rotatable_bond INTEGER,
-    tpsa DOUBLE PRECISION,
-    xlogp3 DOUBLE PRECISION,
-    monoisotopic_weight DOUBLE PRECISION,
-    exact_mass DOUBLE PRECISION,
-    molecular_formula VARCHAR(1024),
-    molecular_weight DOUBLE PRECISION,
-    total_charge INTEGER,
-    heavy_atom_count INTEGER,
-    atom_def_stereo_count INTEGER,
-    atom_udef_stereo_count INTEGER,
-    bond_def_stereo_count INTEGER,
-    bond_udef_stereo_count INTEGER,
-    isotopic_atom_count INTEGER,
-    component_count INTEGER,
-    tauto_count INTEGER,
-    complexity_atom_count INTEGER,
-    iupac_openeye_name VARCHAR(1024),
-    iupac_cas_name VARCHAR(1024),
-    iupac_name_markup VARCHAR(1024),
-    iupac_name VARCHAR(1024),
-    iupac_systematic_name VARCHAR(1024),
-    iupac_traditional_name VARCHAR(1024),
-    smiles VARCHAR(1024),
-    openeye_can_smiles VARCHAR(1024),
-    openeye_iso_smiles VARCHAR(1024)
-);
-"""
-
-# Map SDF property names to database column names
+# props2columns dictionary from earlier
 props2columns = {
     'PUBCHEM_COMPOUND_CID': 'cid',
     'PUBCHEM_CACTVS_COMPLEXITY': 'complexity',
-    'PUBCHEM_CACTVS_HBOND_ACCEPTOR': 'hbond_acceptor',
-    'PUBCHEM_CACTVS_HBOND_DONOR': 'hbond_donor',
-    'PUBCHEM_CACTVS_ROTATABLE_BOND': 'rotatable_bond',
+    'PUBCHEM_CACTVS_HBOND_ACCEPTOR': 'hba',
+    'PUBCHEM_CACTVS_HBOND_DONOR': 'hbd',
+    'PUBCHEM_CACTVS_ROTATABLE_BOND': 'rotatable_bonds',
     'PUBCHEM_CACTVS_TPSA': 'tpsa',
-    'PUBCHEM_XLOGP3': 'xlogp3',
-    'PUBCHEM_MONOISOTOPIC_WEIGHT': 'monoisotopic_weight',
+    'PUBCHEM_XLOGP3': 'logp',
+    'PUBCHEM_MONOISOTOPIC_WEIGHT': 'monoisotopic_mass',
     'PUBCHEM_EXACT_MASS': 'exact_mass',
-    'PUBCHEM_MOLECULAR_FORMULA': 'molecular_formula',
+    'PUBCHEM_MOLECULAR_FORMULA': 'formula',
     'PUBCHEM_MOLECULAR_WEIGHT': 'molecular_weight',
-    'PUBCHEM_TOTAL_CHARGE': 'total_charge',
-    'PUBCHEM_HEAVY_ATOM_COUNT': 'heavy_atom_count',
-    'PUBCHEM_ATOM_DEF_STEREO_COUNT': 'atom_def_stereo_count',
-    'PUBCHEM_ATOM_UDEF_STEREO_COUNT': 'atom_udef_stereo_count',
-    'PUBCHEM_BOND_DEF_STEREO_COUNT': 'bond_def_stereo_count',
-    'PUBCHEM_BOND_UDEF_STEREO_COUNT': 'bond_udef_stereo_count',
-    'PUBCHEM_ISOTOPIC_ATOM_COUNT': 'isotopic_atom_count',
-    'PUBCHEM_COMPONENT_COUNT': 'component_count',
-    'PUBCHEM_CACTVS_TAUTO_COUNT': 'tauto_count',
-    'PUBCHEM_CACTVS_COMPLEXITY_ATOM_COUNT': 'complexity_atom_count',
-    'PUBCHEM_IUPAC_OPENEYE_NAME': 'iupac_openeye_name',
-    'PUBCHEM_IUPAC_CAS_NAME': 'iupac_cas_name',
-    'PUBCHEM_IUPAC_NAME_MARKUP': 'iupac_name_markup',
-    'PUBCHEM_IUPAC_NAME': 'iupac_name',
-    'PUBCHEM_IUPAC_SYSTEMATIC_NAME': 'iupac_systematic_name',
-    'PUBCHEM_IUPAC_TRADITIONAL_NAME': 'iupac_traditional_name',
-    'PUBCHEM_SMILES': 'smiles',
-    'PUBCHEM_OPENEYE_CAN_SMILES': 'openeye_can_smiles',
-    'PUBCHEM_OPENEYE_ISO_SMILES': 'openeye_iso_smiles'
+    'PUBCHEM_TOTAL_CHARGE': 'charge',
+    'PUBCHEM_HEAVY_ATOM_COUNT': 'num_atoms',
+    'PUBCHEM_ATOM_DEF_STEREO_COUNT': 'num_def_stereo',
+    'PUBCHEM_ATOM_UDEF_STEREO_COUNT': 'num_undef_stereo',
+    'PUBCHEM_BOND_DEF_STEREO_COUNT': 'num_def_double',
+    'PUBCHEM_BOND_UDEF_STEREO_COUNT': 'num_undef_double',
+    'PUBCHEM_ISOTOPIC_ATOM_COUNT': 'num_isotopic_atoms',
+    'PUBCHEM_COMPONENT_COUNT': 'fragments',
+    'PUBCHEM_CACTVS_TAUTO_COUNT': 'num_tautomers',
+    'PUBCHEM_CACTVS_COMPLEXITY_ATOM_COUNT': 'num_complexity',
+    'PUBCHEM_IUPAC_OPENEYE_NAME': 'iupac_openeye',
+    'PUBCHEM_IUPAC_CAS_NAME': 'iupac_cas',
+    'PUBCHEM_IUPAC_NAME': 'iupac',
+    'PUBCHEM_IUPAC_SYSTEMATIC_NAME': 'iupac_systematic',
+    'PUBCHEM_IUPAC_TRADITIONAL_NAME': 'iupac_traditional',
+    'PUBCHEM_OPENEYE_ISO_SMILES': 'smiles',
 }
 
-# Value casting rules
-double_fields = {
-    'complexity', 'tpsa', 'xlogp3', 'monoisotopic_weight', 'exact_mass', 'molecular_weight'
-}
-int_fields = {
-    'cid', 'hbond_acceptor', 'hbond_donor', 'rotatable_bond', 'total_charge',
-    'heavy_atom_count', 'atom_def_stereo_count', 'atom_udef_stereo_count',
-    'bond_def_stereo_count', 'bond_udef_stereo_count', 'isotopic_atom_count',
-    'component_count', 'tauto_count', 'complexity_atom_count'
-}
-text_fields = set(props2columns.values()) - double_fields - int_fields
+# Define schema with proper types for Arrow output, derived from provided schema info
+property_schema_fields = [
+    pa.field("cid", pa.uint64()),
+    pa.field("complexity", pa.float32()),
+    pa.field("hba", pa.int32()),
+    pa.field("hbd", pa.int32()),
+    pa.field("rotatable_bonds", pa.int32()),
+    pa.field("tpsa", pa.float32()),
+    pa.field("logp", pa.float32()),
+    pa.field("monoisotopic_mass", pa.float64()),
+    pa.field("exact_mass", pa.float64()),
+    pa.field("formula", pa.string()),
+    pa.field("molecular_weight", pa.float64()),
+    pa.field("charge", pa.int32()),
+    pa.field("num_atoms", pa.int32()),
+    pa.field("num_def_stereo", pa.int32()),
+    pa.field("num_undef_stereo", pa.int32()),
+    pa.field("num_def_double", pa.int32()),
+    pa.field("num_undef_double", pa.int32()),
+    pa.field("num_isotopic_atoms", pa.int32()),
+    pa.field("fragments", pa.int32()),
+    pa.field("num_tautomers", pa.int32()),
+    pa.field("num_complexity", pa.int32()),
+    pa.field("iupac_openeye", pa.string()),
+    pa.field("iupac_cas", pa.string()),
+    pa.field("iupac", pa.string()),
+    pa.field("iupac_systematic", pa.string()),
+    pa.field("iupac_traditional", pa.string()),
+    pa.field("smiles", pa.string()),
+]
 
-def cast_value(field, value):
-    if value is None or value == '':
+schema = pa.schema(property_schema_fields)
+
+# Build type casting map from schema
+cast_map = {field.name: field.type for field in schema}
+
+def cast_value(value, arrow_type):
+    if value is None:
         return None
     try:
-        if field in double_fields:
-            return float(value)
-        elif field in int_fields:
+        if pa.types.is_integer(arrow_type):
             return int(value)
-        return str(value)
-    except:
+        elif pa.types.is_floating(arrow_type):
+            return float(value)
+        elif pa.types.is_boolean(arrow_type):
+            return value.lower() in ("true", "1")
+        elif pa.types.is_string(arrow_type):
+            return str(value)
+        else:
+            return value  # default fallback
+    except Exception:
         return None
 
-def parse_sdf_files(files, limit):
-    data = []
-    count = 0
-    for file in files:
-        print(f"Reading: {file}")
-        if file.endswith('.gz'):
-            f = gzip.open(file, 'rb')
-            suppl = Chem.ForwardSDMolSupplier(f)
-        else:
-            suppl = Chem.SDMolSupplier(file)
-       
-        for mol in suppl:
-            if mol is None:
-                continue
-            row = {}
-            for sdf_prop, db_col in props2columns.items():
-                val = mol.GetProp(sdf_prop) if mol.HasProp(sdf_prop) else None
-                row[db_col] = cast_value(db_col, val)
-            data.append(row)
-            count += 1
-            if limit and count >= limit:
-                return data
-        if file.endswith('.gz'):
-            f.close()
+def parse_molecule(mol):
+    data = {}
+    for prop, col in props2columns.items():
+        value = mol.GetProp(prop) if mol.HasProp(prop) else None
+        arrow_type = cast_map.get(col)
+        data[col] = cast_value(value, arrow_type)
+    print(data)
     return data
 
-def insert_into_postgresql(data, db_params):
-    if not data:
-        print("No data to insert.")
-        return
 
-    columns = list(data[0].keys())
-    placeholders = ', '.join(['%s'] * len(columns))
-    colnames = ', '.join(columns)
-    sql = f"INSERT INTO public.compound ({colnames}) VALUES ({placeholders}) ON CONFLICT (cid) DO NOTHING"
+def stream_sdf_files(filepaths, max_records):
+    count = 0
+    for filepath in filepaths:
+        open_func = gzip.open if filepath.endswith(".gz") else open
+        with open_func(filepath, 'rb') as f:
+            suppl = Chem.ForwardSDMolSupplier(f)
+            for mol in suppl:
+                if mol is None:
+                    continue
+                prop_names = mol.GetPropNames()
+                for name in prop_names:
+                    value = mol.GetProp(name)
+                    print(f'{name}: {value}')
+                yield parse_molecule(mol)
+                count += 1
+                if max_records and count >= max_records:
+                    return
 
-    conn = psycopg2.connect(**db_params)
-    with conn:
-        with conn.cursor() as cur:
-            for row in data:
-                cur.execute(sql, [row[col] for col in columns])
-    print(f"Inserted {len(data)} rows into compound.")
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sdf', required=True, help="Glob pattern for SDF files (e.g. 'data/*.sdf')")
-    parser.add_argument('--limit', type=int, default=None, help="Limit the number of records to load")
-    parser.add_argument('--dbhost', default='localhost')
-    parser.add_argument('--dbname', default='chem')
-    parser.add_argument('--dbuser', default='postgres')
-    parser.add_argument('--dbpass', default='kingfarm')
-    parser.add_argument('--dbport', default=5432, type=int)
-
+    parser.add_argument("--sdf_files", nargs="+", required=True, help="Input SDF files (supports globbing)")
+    parser.add_argument("--max_records", type=int, default=0, help="Max number of records to parse (0 = unlimited)")
+    parser.add_argument("--output", required=True, help="Output Arrow file")
     args = parser.parse_args()
-    files = glob.glob(args.sdf)
-    if not files:
-        print("No files matched.")
-        return
 
-    data = parse_sdf_files(files, args.limit)
-    db_params = {
-        'host': args.dbhost,
-        'database': args.dbname,
-        'user': args.dbuser,
-        'password': args.dbpass,
-        'port': args.dbport
-    }
-    insert_into_postgresql(data, db_params)
+    sdf_files = [f for pattern in args.sdf_files for f in glob.glob(pattern)]
+    max_records = args.max_records if args.max_records > 0 else None
 
-if __name__ == '__main__':
+    writer = None
+    batch_size = 1000
+    batch = []
+
+    with ipc.new_file(args.output, schema) as writer:
+        for record in stream_sdf_files(sdf_files, max_records):
+            batch.append(record)
+            if len(batch) >= batch_size:
+                table = pa.Table.from_pylist(batch, schema=schema)
+                writer.write(table)
+                batch.clear()
+
+        if batch:
+            table = pa.Table.from_pylist(batch, schema=schema)
+            writer.write(table)
+
+
+if __name__ == "__main__":
     main()
