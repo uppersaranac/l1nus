@@ -2,10 +2,13 @@ import argparse
 import glob
 import gzip
 import os
+import sys
 from rdkit import Chem
 import pyarrow as pa
 import pyarrow.ipc as ipc
 from pathlib import Path
+from multiprocessing import Pool, cpu_count
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 # props2columns dictionary from earlier
 props2columns = {
@@ -35,7 +38,7 @@ props2columns = {
     'PUBCHEM_IUPAC_NAME': 'iupac',
     'PUBCHEM_IUPAC_SYSTEMATIC_NAME': 'iupac_systematic',
     'PUBCHEM_IUPAC_TRADITIONAL_NAME': 'iupac_traditional',
-    'PUBCHEM_OPENEYE_ISO_SMILES': 'smiles',
+    'PUBCHEM_SMILES': 'smiles',
 }
 
 # Define schema with proper types for Arrow output, derived from provided schema info
@@ -71,7 +74,6 @@ property_schema_fields = [
 
 schema = pa.schema(property_schema_fields)
 
-# Build type casting map from schema
 cast_map = {field.name: field.type for field in schema}
 
 def cast_value(value, arrow_type):
@@ -87,7 +89,7 @@ def cast_value(value, arrow_type):
         elif pa.types.is_string(arrow_type):
             return str(value)
         else:
-            return value  # default fallback
+            return value
     except Exception:
         return None
 
@@ -99,52 +101,85 @@ def parse_molecule(mol):
         data[col] = cast_value(value, arrow_type)
     return data
 
-
-def stream_sdf_files(filepaths, max_records):
-    count = 0
-    for filepath in filepaths:
-        open_func = gzip.open if filepath.endswith(".gz") else open
+def process_file_to_arrow(filepath, max_records, index):
+    output_path = f"temp_output_{index}.arrow"
+    open_func = gzip.open if filepath.endswith(".gz") else open
+    try:
         with open_func(filepath, 'rb') as f:
-            suppl = Chem.ForwardSDMolSupplier(f)
-            for mol in suppl:
-                if mol is None:
-                    continue
-                # prop_names = mol.GetPropNames()
-                # for name in prop_names:
-                #     value = mol.GetProp(name)
-                #     print(f'{name}: {value}')
-                yield parse_molecule(mol)
-                count += 1
-                if max_records and count >= max_records:
-                    return
-
+            try:
+                suppl = Chem.ForwardSDMolSupplier(f)
+                with ipc.new_file(output_path, schema) as writer:
+                    batch = []
+                    count = 0
+                    for mol in suppl:
+                        if mol is None:
+                            continue
+                        batch.append(parse_molecule(mol))
+                        count += 1
+                        if len(batch) >= 1000:
+                            table = pa.Table.from_pylist(batch, schema=schema)
+                            writer.write(table)
+                            batch.clear()
+                        if max_records and count >= max_records:
+                            break
+                    if batch:
+                        table = pa.Table.from_pylist(batch, schema=schema)
+                        writer.write(table)
+            except Exception as e:
+                print(f"[Error] RDKit supplier error in file {filepath}: {e}", file=sys.stderr)
+    except Exception as e:
+        print(f"[Error] Failed to open file {filepath}: {e}", file=sys.stderr)
+        sys.exit(1)
+    return output_path
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sdf_files", nargs="+", required=True, help="Input SDF files (supports globbing)")
     parser.add_argument("--max_records", type=int, default=0, help="Max number of records to parse (0 = unlimited)")
     parser.add_argument("--output", required=True, help="Output Arrow file")
+    parser.add_argument("--n_cores", type=int, default=cpu_count(), help="Number of cores to use")
     args = parser.parse_args()
 
     sdf_files = [f for pattern in args.sdf_files for f in glob.glob(pattern)]
     max_records = args.max_records if args.max_records > 0 else None
 
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+    ) as progress:
+        task = progress.add_task("Processing SDF files...", total=len(sdf_files))
+
+        with Pool(processes=args.n_cores) as pool:
+            results = []
+            for i, filepath in enumerate(sdf_files):
+                results.append(pool.apply_async(process_file_to_arrow, args=(filepath, max_records, i)))
+            pool.close()
+
+            output_files = []
+            for r in results:
+                output_files.append(r.get())
+                progress.update(task, advance=1)
+    # with pa.OSFile(str(args.output), 'wb') as sink:
+    #     with pa.RecordBatchFileWriter(sink, schema) as writer:
+    #         for path in output_files:
+    #             table = pa.ipc.RecordBatchFileReader(pa.OSFile(str(path), 'r')).read_all()
+    #             writer.write_table(table)
+
+    # huggingface currently only supports arrow streaming format, not the random access format
     writer = None
-    batch_size = 1000
-    batch = []
+    for path in output_files:
+        with pa.ipc.RecordBatchFileReader(pa.memory_map(path,'r')) as dataset:
+            for i in range(dataset.num_record_batches):
+                rb = dataset.get_batch(i)
+                if writer is None:
+                    writer = pa.RecordBatchStreamWriter(str(args.output), rb.schema)
+                writer.write_batch(rb)
 
-    with ipc.new_file(args.output, schema) as writer:
-        for record in stream_sdf_files(sdf_files, max_records):
-            batch.append(record)
-            if len(batch) >= batch_size:
-                table = pa.Table.from_pylist(batch, schema=schema)
-                writer.write(table)
-                batch.clear()
-
-        if batch:
-            table = pa.Table.from_pylist(batch, schema=schema)
-            writer.write(table)
-
+    writer.close()
 
 if __name__ == "__main__":
     main()
+    print("Done!")
