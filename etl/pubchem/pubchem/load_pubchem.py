@@ -38,7 +38,7 @@ props2columns = {
     'PUBCHEM_IUPAC_NAME': 'iupac',
     'PUBCHEM_IUPAC_SYSTEMATIC_NAME': 'iupac_systematic',
     'PUBCHEM_IUPAC_TRADITIONAL_NAME': 'iupac_traditional',
-    'PUBCHEM_SMILES': 'smiles',
+    'PUBCHEM_OPENEYE_ISO_SMILES': 'smiles',  # PUBCHEM_SMILES not in ftp sdf files
 }
 
 # Define schema with proper types for Arrow output, derived from provided schema info
@@ -162,23 +162,23 @@ def main():
             for r in results:
                 output_files.append(r.get())
                 progress.update(task, advance=1)
-    # with pa.OSFile(str(args.output), 'wb') as sink:
-    #     with pa.RecordBatchFileWriter(sink, schema) as writer:
-    #         for path in output_files:
-    #             table = pa.ipc.RecordBatchFileReader(pa.OSFile(str(path), 'r')).read_all()
-    #             writer.write_table(table)
+    with pa.OSFile(str(args.output), 'wb') as sink:
+        with pa.RecordBatchFileWriter(sink, schema) as writer:
+            for path in output_files:
+                table = pa.ipc.RecordBatchFileReader(pa.OSFile(str(path), 'r')).read_all()
+                writer.write_table(table)
 
     # huggingface currently only supports arrow streaming format, not the random access format
-    writer = None
-    for path in output_files:
-        with pa.ipc.RecordBatchFileReader(pa.memory_map(path,'r')) as dataset:
-            for i in range(dataset.num_record_batches):
-                rb = dataset.get_batch(i)
-                if writer is None:
-                    writer = pa.RecordBatchStreamWriter(str(args.output), rb.schema)
-                writer.write_batch(rb)
+    # writer = None
+    # for path in output_files:
+    #     with pa.ipc.RecordBatchFileReader(pa.memory_map(path,'r')) as dataset:
+    #         for i in range(dataset.num_record_batches):
+    #             rb = dataset.get_batch(i)
+    #             if writer is None:
+    #                 writer = pa.RecordBatchStreamWriter(str(args.output), rb.schema)
+    #             writer.write_batch(rb)
 
-    writer.close()
+    # writer.close()
 
 if __name__ == "__main__":
     main()
