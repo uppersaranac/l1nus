@@ -4,46 +4,41 @@ import logging
 import pyarrow as pa
 import polars as pl
 import numpy as np
-from datasets import Dataset, DatasetDict
-from transformers import (
-    AutoTokenizer,
-    set_seed,
-)
+from datasets.arrow_writer import ArrowWriter 
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-
-def load_and_prepare_data(arrow_path, max_records=None):
-    data = {"train": [], "valid": [], "test": []}
+def load_and_prepare_data(arrow_path, output_prefix, max_records=None, p=None):
+    if p is None:
+        p = (0.95, 0.025, 0.025)
+    writers = {"train": ArrowWriter(path=f"{output_prefix}_train.arrow"),
+                "valid": ArrowWriter(path=f"{output_prefix}_valid.arrow"),
+                "test": ArrowWriter(path=f"{output_prefix}_test.arrow")}
     total_loaded = 0
 
-    df = pl.read_ipc(arrow_path, memory_map=True, columns=['smiles','iupac'])
+    with pa.ipc.RecordBatchFileReader(pa.OSFile(str(arrow_path), 'r')) as reader:
+        for i in range(reader.num_record_batches):
+            batch = reader.get_batch(i)
+            df = pl.from_arrow(batch)
+            for row in df.iter_rows(named=True):
+                if max_records and total_loaded >= max_records:
+                    break
+                split = str(np.random.choice(('train','valid','test'), p=p))
+                writers[split].write({"smiles": row['smiles'],'iupac': row['iupac']})
+                total_loaded += 1
+            if max_records and total_loaded >= max_records:
+                    break
+    for writer in writers.values():
+        writer.finalize()
 
-    for row in df.iter_rows(named=True):
-        if max_records and total_loaded >= max_records:
-            break
-        split = str(np.random.choice(('train','valid','test'), p=(0.95,0.025,0.025)))
-        if isinstance(split, dict):
-            split = list(split.values())[0]  # handle dictionary field
-        question = f"What is the IUPAC name for the molecule {row['smiles']}?"
-        answer = f"It is {row['iupac']}"
-        full_text = f"{question} {answer}"
-        data[split].append({"text": full_text})
-        total_loaded += 1
-
-    dataset = DatasetDict({
-        split: Dataset.from_list(samples)
-        for split, samples in data.items() if samples
-    })
-    return dataset
 
 def main():
-    parser = argparse.ArgumentParser(description="Train Phi-4 on IUPAC chemical naming task.")
+    parser = argparse.ArgumentParser(description="make huggingface datasets")
     parser.add_argument("--arrow_file", type=str, default='/home/lyg/source/l1nus/etl/pubchem/pubchem/pubchem.arrow', help="Path to the Arrow file.")
-    parser.add_argument("--output_file", type=str, default="test")
+    parser.add_argument("--output_prefix", type=str, default="test")
     parser.add_argument("--max_records", type=int, default=None, help="Limit the number of records loaded.")
     parser.add_argument("--max_length", type=int, default=4096)
     parser.add_argument("--seed", type=int, default=42)
@@ -51,22 +46,29 @@ def main():
     args = parser.parse_args()
 
     logger.info("Loading and preparing dataset...")
-    dataset = load_and_prepare_data(args.arrow_file, args.max_records)
-
-    logger.info("Loading tokenizer and model...")
-    tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-4", trust_remote_code=True)
-
-    def tokenize_function(examples):
-        return tokenizer(
-            examples["text"], truncation=True, max_length=args.max_length, padding="max_length"
-        )
-
-    logger.info("Tokenizing dataset...")
-    tokenized_datasets = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
-    tokenized_datasets.shuffle(seed=42)
-    tokenized_datasets.save_to_disk(args.output_file)
-
+    load_and_prepare_data(args.arrow_file, args.output_prefix, max_records=args.max_records, p=(0.95,0.025,0.025))
 
 
 if __name__ == "__main__":
     main()
+
+
+"""
+ from datasets.arrow_writer import ArrowWriter                                                                                                                                                   
+
+In [2]: with ArrowWriter(path="tmp.arrow") as writer: 
+   ...:     writer.write({"a": 1}) 
+   ...:     writer.write({"a": 2}) 
+   ...:     writer.write({"a": 3}) 
+   ...:     writer.finalize() 
+   ...:                                                                                                                                                                                                 
+
+In [3]: from datasets import Dataset                                                                                                                                                                    
+
+In [4]: ds = Dataset.from_file("tmp.arrow") 
+
+or 
+batch = {"a": [4, 5, 6]}
+writer.write_batch(batch
+
+"""

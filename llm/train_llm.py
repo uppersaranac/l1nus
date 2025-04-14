@@ -1,130 +1,229 @@
+
+#!/usr/bin/env python
 import argparse
 import logging
 import math
 import os
+import sys
 
-import pyarrow.dataset as ds
+import numpy as np
 import pyarrow as pa
-import polars as pl
-from datasets import Dataset, DatasetDict
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    TrainingArguments,
-    Trainer,
-    DataCollatorForLanguageModeling,
-    set_seed,
-)
-import evaluate
+import torch
+from datasets import Dataset
+from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-# Evaluation metrics
-accuracy = evaluate.load("accuracy")
-def compute_metrics(eval_pred):
-    predictions, labels = eval_pred
-    predictions = predictions.argmax(axis=-1)
+"""
+property_schema_fields = [
+    pa.field("cid", pa.uint64()),
+    pa.field("complexity", pa.float32()),
+    pa.field("hba", pa.int32()),
+    pa.field("hbd", pa.int32()),
+    pa.field("rotatable_bonds", pa.int32()),
+    pa.field("tpsa", pa.float32()),
+    pa.field("logp", pa.float32()),
+    pa.field("monoisotopic_mass", pa.float64()),
+    pa.field("exact_mass", pa.float64()),
+    pa.field("formula", pa.string()),
+    pa.field("molecular_weight", pa.float64()),
+    pa.field("charge", pa.int32()),
+    pa.field("num_atoms", pa.int32()),
+    pa.field("num_def_stereo", pa.int32()),
+    pa.field("num_undef_stereo", pa.int32()),
+    pa.field("num_def_double", pa.int32()),
+    pa.field("num_undef_double", pa.int32()),
+    pa.field("num_isotopic_atoms", pa.int32()),
+    pa.field("fragments", pa.int32()),
+    pa.field("num_tautomers", pa.int32()),
+    pa.field("num_complexity", pa.int32()),
+    pa.field("iupac_openeye", pa.string()),
+    pa.field("iupac_cas", pa.string()),
+    pa.field("iupac", pa.string()),
+    pa.field("iupac_systematic", pa.string()),
+    pa.field("iupac_traditional", pa.string()),
+    pa.field("smiles", pa.string()),
+    pa.field("set", pa.dictionary(pa.int32(), pa.string()))
+]
+
+schema = pa.schema(property_schema_fields)
+
+There are 3 files for training, validation, and test data. Read and process the datasets in batch as the
+ datasets are very large. We will be fine tuning instruction trained models like Qwen/Qwen2.5-0.5B-Instruct.  
+ The training task should be of question and answer format where the question is of the format  
+ f"What is the IUPAC name for the molecule {smiles}?" and the answer is of the format "It is {iupac}" 
+ where {smiles} corresponds to the 'smiles' field in arrow schema and {iupac} comes from the 'iupac' 
+ field in the arrow schema. The code to create the questions and answers should not be hardcoded for which 
+ model is selected and use special tokens extracted from the model and tokenizer configuration.
+use tokenizer.apply_chat_template() instead of hard coding the format of the question and answer. 
+Please add logging, accuracy and perplexity metrics, command line arguments for the filename of the data and applicable TrainingArguments, 
+and add an argument to limit the number of records loaded for training. Instead of using dataframes,
+ just load the Datasets from the arrow files directly. Use a batched Dataset.map() to convert the 
+ data into tokenized datasets for training and evaluation. It's important to minimize memory usage
+   by batch processing in this script. 
+
+"""
+
+def load_arrow_dataset(file_path, max_records=None):
+    """
+    Load an Arrow file using PyArrow, optionally limiting the number of records.
+    The resulting Arrow table is then converted into a Hugging Face Dataset.
+    """
+    logging.info(f"Loading dataset from {file_path}")
+    # try:
+    #     with pa.memory_map(file_path, 'rb') as source:
+    #         table = pa.ipc.read_table(source)
+    # except Exception as e:
+    #     logging.error(f"Error loading {file_path}: {e}")
+    #     sys.exit(1)
+    # if max_records is not None:
+    #     table = table.slice(0, max_records)
+    # return Dataset.from_arrow(table)
+    dataset = Dataset.from_file(file_path)
+    if max_records is not None and len(dataset) > max_records:
+        dataset = dataset.select(range(max_records))
+    return dataset
+
+
+def compute_metrics(eval_preds):
+    """
+    Compute token-level accuracy and perplexity.
+   
+    Accuracy is calculated by comparing the argmax predictions vs. labels
+    (ignoring pad tokens marked as -100), and perplexity is exp(cross_entropy_loss).
+    """
+    logits, labels = eval_preds
+    predictions = np.argmax(logits, axis=-1)
     mask = labels != -100
-    correct = (predictions == labels) & mask
-    acc = correct.sum() / mask.sum()
-    return {
-        "accuracy": acc.item(),
-        "perplexity": math.exp(eval_pred.loss) if hasattr(eval_pred, 'loss') else float('inf')
-    }
+    if mask.sum() > 0:
+        accuracy = (predictions[mask] == labels[mask]).mean()
+    else:
+        accuracy = 0.0
 
-def load_and_prepare_data(arrow_path, max_records=None):
-    with pa.ipc.RecordBatchStreamReader(arrow_path) as arrow_dataset:
-        data = {"train": [], "valid": [], "test": []}
-        total_loaded = 0
+    loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
+    logits_tensor = torch.tensor(logits)
+    labels_tensor = torch.tensor(labels)
+    loss = loss_fct(
+        logits_tensor.view(-1, logits_tensor.size(-1)),
+        labels_tensor.view(-1)
+    ).item()
+    perplexity = math.exp(loss) if loss < 100 else float("inf")
+    return {"accuracy": accuracy, "perplexity": perplexity}
 
-        for batch in arrow_dataset.read_next_batch():
-            table = pa.Table.from_batches([batch])
-            df = pl.from_arrow(table)
-
-            for row in df.iter_rows(named=True):
-                if max_records and total_loaded >= max_records:
-                    break
-                split = 'train' #row["set"]
-                if isinstance(split, dict):
-                    split = list(split.values())[0]  # handle dictionary field
-                question = f"What is the IUPAC name for the molecule {row['smiles']}?"
-                answer = f"It is {row['iupac']}"
-                full_text = f"{question} {answer}"
-                data[split].append({"text": full_text})
-                total_loaded += 1
-
-            if max_records and total_loaded >= max_records:
-                break
-
-        dataset = DatasetDict({
-            split: Dataset.from_list(samples)
-            for split, samples in data.items() if samples
-        })
-        return dataset
 
 def main():
-    parser = argparse.ArgumentParser(description="Train Phi-4 on IUPAC chemical naming task.")
-    parser.add_argument("--arrow_file", type=str, default='/home/lyg/source/l1nus/etl/pubchem/pubchem/pubchem.arrow', help="Path to the Arrow file.")
-    parser.add_argument("--output_dir", type=str, default="./phi4-iupac-model")
-    parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--learning_rate", type=float, default=5e-5)
-    parser.add_argument("--max_length", type=int, default=4096
-    parser.add_argument("--max_records", type=int, default=1000, help="Limit the number of records loaded.")
-    parser.add_argument("--seed", type=int, default=42)
+    parser = argparse.ArgumentParser(
+        description="Fine-tune an instruction-tuned model (e.g., microsoft/phi-4) on a Q&A task using Hugging Face Transformers"
+    )
+    parser.add_argument("--train_file", type=str, default='/home/lyg/source/l1nus/llm/test_train.arrow', help="Path to the training Arrow file.")
+    parser.add_argument("--eval_file", type=str, default='/home/lyg/source/l1nus/llm/test_valid.arrow', help="Path to the evaluation Arrow file.")
+    parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
+    parser.add_argument("--max_records", type=int, default=1000, help="Limit number of records loaded for training.")
+    parser.add_argument("--max_length", type=int, default=512, help="Max sequence length for tokenization.")
+    parser.add_argument("--output_dir", type=str, default="./results", help="Output directory for checkpoints and logs.")
+    parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs.")
+    parser.add_argument("--per_device_train_batch_size", type=int, default=8, help="Training batch size per device.")
+    parser.add_argument("--per_device_eval_batch_size", type=int, default=8, help="Evaluation batch size per device.")
+    parser.add_argument("--logging_steps", type=int, default=500, help="Log every X update steps.")
+    parser.add_argument("--eval_steps", type=int, default=1000, help="Run an evaluation every X steps.")
+    parser.add_argument("--model_name", type=str, default="openai-community/gpt2-medium",
+                        help="Pre-trained model name or path (e.g., microsoft/phi-4, Qwen/Qwen2.5-0.5B-Instruct).")
     args = parser.parse_args()
 
-    set_seed(args.seed)
+    # Setup logging.
+    logging.basicConfig(level=logging.INFO)
 
-    logger.info("Loading and preparing dataset...")
-    dataset = load_and_prepare_data(args.arrow_file, args.max_records)
+    logging.info("Loading model and tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    model = AutoModelForCausalLM.from_pretrained(args.model_name)
 
-    logger.info("Loading tokenizer and model...")
-    tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-4", trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained("microsoft/phi-4", trust_remote_code=True)
+    # Load datasets directly from Arrow files.
+    logging.info("Loading the training dataset from Arrow file...")
+    train_dataset = load_arrow_dataset(args.train_file, args.max_records)
+    logging.info("Loading the evaluation dataset from Arrow file...")
+    eval_dataset = load_arrow_dataset(args.eval_file, args.max_records)
+    test_dataset = load_arrow_dataset(args.test_file, args.max_records) if args.test_file else None
 
-    def tokenize_function(examples):
-        return tokenizer(
-            examples["text"], truncation=True, max_length=args.max_length, padding="max_length"
+    def tokenize_batch(examples):
+        """
+        For a batch of examples, create a chat-format prompt and tokenize it.
+        Each example creates a conversation where the user asks for the IUPAC name
+        given the molecule SMILES and the assistant provides the answer.
+        """
+        texts = []
+        for smiles, iupac in zip(examples["smiles"], examples["iupac"]):
+            messages = [
+                {"role": "user", "content": f"What is the IUPAC name for the molecule {smiles}?"},
+                {"role": "assistant", "content": f"It is {iupac}"}
+            ]
+            texts.append(tokenizer.apply_chat_template(conversation=messages, padding="max_length", truncation=True, max_length=args.max_length))
+        return {'input_ids': texts}
+#        return tokenizer(texts, padding="max_length", truncation=True, max_length=args.max_length)
+
+    # Tokenize the datasets using batched mapping.
+    logging.info("Tokenizing the training dataset in batches...")
+    train_dataset = train_dataset.map(
+        tokenize_batch,
+        batched=True,
+        batch_size=1000,
+        remove_columns=["smiles", "iupac"]
+    )
+    logging.info("Tokenizing the evaluation dataset in batches...")
+    eval_dataset = eval_dataset.map(
+        tokenize_batch,
+        batched=True,
+        batch_size=1000,
+        remove_columns=["smiles", "iupac"]
+    )
+    if test_dataset is not None:
+        logging.info("Tokenizing the test dataset in batches...")
+        test_dataset = test_dataset.map(
+            tokenize_batch,
+            batched=True,
+            batch_size=1000,
+            remove_columns=["smiles", "iupac"]
         )
 
-    logger.info("Tokenizing dataset...")
-    tokenized_datasets = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
-
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-
+    # Set up TrainingArguments.
     training_args = TrainingArguments(
         output_dir=args.output_dir,
-        evaluation_strategy="epoch",
-        learning_rate=args.learning_rate,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
-        num_train_epochs=args.epochs,
-        weight_decay=0.01,
+        num_train_epochs=args.num_train_epochs,
+        per_device_train_batch_size=args.per_device_train_batch_size,
+        per_device_eval_batch_size=args.per_device_eval_batch_size,
+        logging_steps=args.logging_steps,
+        eval_strategy="steps",
+        eval_steps=args.eval_steps,
+        save_total_limit=2,
         logging_dir=os.path.join(args.output_dir, "logs"),
-        save_strategy="epoch",
-        push_to_hub=False,
-        logging_steps=10,
-        report_to="none"
+ #       load_best_model_at_end=True,
+        metric_for_best_model="perplexity",
     )
 
-    logger.info("Starting training...")
+    # Initialize the Trainer.
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_datasets.get("train"),
-        eval_dataset=tokenized_datasets.get("valid"),
-        tokenizer=tokenizer,
-        data_collator=data_collator,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         compute_metrics=compute_metrics,
     )
 
+    # Train and evaluate.
+    logging.info("Starting training...")
     trainer.train()
+    logging.info("Training complete. Evaluating the model on the evaluation dataset...")
+    eval_results = trainer.evaluate()
+    logging.info(f"Evaluation Results: {eval_results}")
+
+    if test_dataset is not None:
+        logging.info("Evaluating the model on the test dataset...")
+        test_results = trainer.evaluate(test_dataset)
+        logging.info(f"Test Results: {test_results}")
+
+    # Save the model.
+    logging.info("Saving the final model...")
     trainer.save_model(args.output_dir)
-    tokenizer.save_pretrained(args.output_dir)
-    logger.info("Training complete and model saved.")
+    logging.info("All done.")
+
 
 if __name__ == "__main__":
     main()
