@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import sys
+from pathlib import Path
 
 import numpy as np
 import pyarrow as pa
@@ -78,7 +79,7 @@ def load_arrow_dataset(file_path, max_records=None):
     # if max_records is not None:
     #     table = table.slice(0, max_records)
     # return Dataset.from_arrow(table)
-    dataset = Dataset.from_file(file_path)
+    dataset = Dataset.from_file(str(Path(file_path).expanduser()))
     if max_records is not None and len(dataset) > max_records:
         dataset = dataset.select(range(max_records))
     return dataset
@@ -90,6 +91,11 @@ def compute_metrics(eval_preds):
    
     Accuracy is calculated by comparing the argmax predictions vs. labels
     (ignoring pad tokens marked as -100), and perplexity is exp(cross_entropy_loss).
+
+    output is 
+    eval_preds.label_ids of type numpy.ndarray and shape 237, 512 and dtype int64
+    eval_preds.predictions of type numpy.dtypes.Float32DType  shape (237, 512, 151936) and dtype float32
+
     """
     logits, labels = eval_preds
     predictions = np.argmax(logits, axis=-1)
@@ -114,18 +120,18 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fine-tune an instruction-tuned model (e.g., microsoft/phi-4) on a Q&A task using Hugging Face Transformers"
     )
-    parser.add_argument("--train_file", type=str, default='/home/lyg/source/l1nus/llm/test_train.arrow', help="Path to the training Arrow file.")
-    parser.add_argument("--eval_file", type=str, default='/home/lyg/source/l1nus/llm/test_valid.arrow', help="Path to the evaluation Arrow file.")
+    parser.add_argument("--train_file", type=str, default='~/data/pubchem/arrow/test_train.arrow', help="Path to the training Arrow file.")
+    parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/test_valid.arrow', help="Path to the evaluation Arrow file.")
     parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
+    parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
     parser.add_argument("--max_records", type=int, default=1000, help="Limit number of records loaded for training.")
     parser.add_argument("--max_length", type=int, default=512, help="Max sequence length for tokenization.")
-    parser.add_argument("--output_dir", type=str, default="./results", help="Output directory for checkpoints and logs.")
     parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs.")
     parser.add_argument("--per_device_train_batch_size", type=int, default=8, help="Training batch size per device.")
     parser.add_argument("--per_device_eval_batch_size", type=int, default=8, help="Evaluation batch size per device.")
     parser.add_argument("--logging_steps", type=int, default=500, help="Log every X update steps.")
     parser.add_argument("--eval_steps", type=int, default=1000, help="Run an evaluation every X steps.")
-    parser.add_argument("--model_name", type=str, default="openai-community/gpt2-medium",
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-0.5B-Instruct",
                         help="Pre-trained model name or path (e.g., microsoft/phi-4, Qwen/Qwen2.5-0.5B-Instruct).")
     args = parser.parse_args()
 
@@ -167,6 +173,7 @@ def main():
         batch_size=1000,
         remove_columns=["smiles", "iupac"]
     )
+    train_dataset = train_dataset.add_column('labels', train_dataset['input_ids'].copy())
     logging.info("Tokenizing the evaluation dataset in batches...")
     eval_dataset = eval_dataset.map(
         tokenize_batch,
@@ -174,6 +181,8 @@ def main():
         batch_size=1000,
         remove_columns=["smiles", "iupac"]
     )
+    eval_dataset = eval_dataset.add_column('labels', eval_dataset['input_ids'].copy())
+
     if test_dataset is not None:
         logging.info("Tokenizing the test dataset in batches...")
         test_dataset = test_dataset.map(
@@ -182,10 +191,11 @@ def main():
             batch_size=1000,
             remove_columns=["smiles", "iupac"]
         )
+        test_dataset = test_dataset.add_column('labels', test_dataset['input_ids'].copy())
 
     # Set up TrainingArguments.
     training_args = TrainingArguments(
-        output_dir=args.output_dir,
+        output_dir=str(Path(args.output_dir).expanduser()),
         num_train_epochs=args.num_train_epochs,
         per_device_train_batch_size=args.per_device_train_batch_size,
         per_device_eval_batch_size=args.per_device_eval_batch_size,
@@ -196,6 +206,7 @@ def main():
         logging_dir=os.path.join(args.output_dir, "logs"),
  #       load_best_model_at_end=True,
         metric_for_best_model="perplexity",
+        eval_accumulation_steps=1,
     )
 
     # Initialize the Trainer.
