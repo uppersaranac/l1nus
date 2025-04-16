@@ -1,17 +1,16 @@
-
 #!/usr/bin/env python
-import argparse
-import logging
-import math
-import os
-import sys
+import argparse, logging, gc
 from pathlib import Path
 
 import numpy as np
-import pyarrow as pa
-import torch
+import evaluate
 from datasets import Dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    Trainer,
+    TrainingArguments,
+)
 
 
 """
@@ -63,209 +62,205 @@ and add an argument to limit the number of records loaded for training. Instead 
    by batch processing in this script. 
 
 """
+"""
+Fine‑tune an instruction‑tuned causal‑LM on a SMILES → IUPAC Q&A task
+and evaluate by *generation* (model sees only the question).
 
-def load_arrow_dataset(file_path, max_records=None):
-    """
-    Load an Arrow file using PyArrow, optionally limiting the number of records.
-    The resulting Arrow table is then converted into a Hugging Face Dataset.
-    """
-    logging.info(f"Loading dataset from {file_path}")
-    # try:
-    #     with pa.memory_map(file_path, 'rb') as source:
-    #         table = pa.ipc.read_table(source)
-    # except Exception as e:
-    #     logging.error(f"Error loading {file_path}: {e}")
-    #     sys.exit(1)
-    # if max_records is not None:
-    #     table = table.slice(0, max_records)
-    # return Dataset.from_arrow(table)
-    dataset = Dataset.from_file(str(Path(file_path).expanduser()))
-    if max_records is not None and len(dataset) > max_records:
-        dataset = dataset.select(range(max_records))
-    return dataset
+System prompt: "You are a helpful chemistry professor."
+"""
+
+SYSTEM_PROMPT = "You are a helpful chemistry professor."
+
+# ─────────────────────────── data helper ──────────────────────────────
+def load_arrow_dataset(path: str, limit: int | None = None) -> Dataset:
+    ds = Dataset.from_file(str(Path(path).expanduser()))
+    if limit and len(ds) > limit:
+        ds = ds.select(range(limit))
+    return ds
+
+
+# ───────────────────────── tokenisation helpers ───────────────────────
+def build_train_batch(tok, smiles, iupac, max_len):
+    msgs = [
+        [
+            {"role": "system",    "content": SYSTEM_PROMPT},
+            {"role": "user",
+             "content": f"What is the IUPAC name for the molecule {s}?"},
+            {"role": "assistant", "content": f"It is {i}"}
+        ]
+        for s, i in zip(smiles, iupac)
+    ]
+    enc = tok([tok.apply_chat_template(m) for m in msgs],
+              truncation=True, padding="max_length", max_length=max_len)
+    enc["labels"] = enc["input_ids"].copy()
+    return enc
+
+
+def build_eval_batch(tok, smiles, iupac,
+                     max_prompt_len, max_label_len):
+    user_prompts = [
+        [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",
+             "content": f"What is the IUPAC name for the molecule {s}?"}
+        ]
+        for s in smiles
+    ]
+    prompt_enc = tok(
+        [tok.apply_chat_template(m, add_generation_prompt=True)
+         for m in user_prompts],
+        truncation=True, padding="max_length", max_length=max_prompt_len,
+    )
+
+    ans_enc = tok([f"It is {i}" for i in iupac],
+                  truncation=True, add_special_tokens=False,
+                  max_length=max_label_len)
+
+    pad = tok.pad_token_id
+    labels = [
+        ids + [pad] * (max_label_len - len(ids))
+        for ids in ans_enc["input_ids"]
+    ]
+    prompt_enc["labels"] = (
+        np.where(np.array(labels) == pad, -100, labels).tolist()
+    )
+    return prompt_enc
+
+
+# ─────────────────────────── metrics & helpers ────────────────────────
+exact_match = evaluate.load("exact_match")
+
+
+def _norm(s: str) -> str:
+    s = s.strip().lower()
+    if s.startswith("it is"):
+        s = s[5:].strip()
+    return s.rstrip(".")
 
 
 def compute_metrics(eval_preds):
-    """
-    Compute token-level accuracy and perplexity.
-   
-    Accuracy is calculated by comparing the argmax predictions vs. labels
-    (ignoring pad tokens marked as -100), and perplexity is exp(cross_entropy_loss).
+    preds, labels = eval_preds
+    preds_txt = tokenizer.batch_decode(preds, skip_special_tokens=True)
 
-    output is 
-    eval_preds.label_ids of type numpy.ndarray and shape 237, 512 and dtype int64
-    eval_preds.predictions of type numpy.dtypes.Float32DType  shape (237, 512, 151936) and dtype float32
-
-    """
-    logits, labels = eval_preds
-    predictions = np.argmax(logits, axis=-1)
-    mask = labels != -100
-    if mask.sum() > 0:
-        accuracy = (predictions[mask] == labels[mask]).mean()
-    else:
-        accuracy = 0.0
-
-    loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
-    logits_tensor = torch.tensor(logits)
-    labels_tensor = torch.tensor(labels)
-    loss = loss_fct(
-        logits_tensor.view(-1, logits_tensor.size(-1)),
-        labels_tensor.view(-1)
-    ).item()
-    perplexity = math.exp(loss) if loss < 100 else float("inf")
-    return {"accuracy": accuracy, "perplexity": perplexity}
-
-# ---------------------------------------------------------------------
-# Pretty‑print helper
-# ---------------------------------------------------------------------
-def print_predictions(trainer: Trainer, dataset: Dataset, tokenizer, title: str):
-    """
-    Runs `trainer.predict()` on *dataset*, decodes predictions & labels,
-    and prints them side‑by‑side.
-    """
-    logging.info("Decoding %s set predictions …", title)
-    output = trainer.predict(dataset)
-    pred_ids = np.argmax(output.predictions, axis=-1)
-
-    # Replace -100 in labels with pad token so we can decode cleanly
     pad_id = tokenizer.pad_token_id
-    label_ids = np.where(output.label_ids == -100, pad_id, output.label_ids)
-
-    predictions = tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-    references  = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
-
-    for i, (ref, pred) in enumerate(zip(references, predictions)):
-        print(f"\n—— {title} example {i} ——")
-        print("GROUND TRUTH:", ref.strip())
-        print("PREDICTED   :", pred.strip())
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Fine-tune an instruction-tuned model (e.g., microsoft/phi-4) on a Q&A task using Hugging Face Transformers"
+    labels_txt = tokenizer.batch_decode(
+        np.where(labels == -100, pad_id, labels),
+        skip_special_tokens=True
     )
-    parser.add_argument("--train_file", type=str, default='~/data/pubchem/arrow/test_train.arrow', help="Path to the training Arrow file.")
-    parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/test_valid.arrow', help="Path to the evaluation Arrow file.")
-    parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
-    parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
-    parser.add_argument("--max_records", type=int, default=1000, help="Limit number of records loaded for training.")
-    parser.add_argument("--eval_limit",  type=int, default=50)
-    parser.add_argument("--max_length", type=int, default=512, help="Max sequence length for tokenization.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs.")
-    parser.add_argument("--per_device_train_batch_size", type=int, default=8, help="Training batch size per device.")
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=8, help="Evaluation batch size per device.")
-    parser.add_argument("--logging_steps", type=int, default=500, help="Log every X update steps.")
-    parser.add_argument("--eval_steps", type=int, default=1000, help="Run an evaluation every X steps.")
-    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-0.5B-Instruct",
-                        help="Pre-trained model name or path (e.g., microsoft/phi-4, Qwen/Qwen2.5-0.5B-Instruct).")
-    args = parser.parse_args()
 
-    # Setup logging.
-    logging.basicConfig(level=logging.INFO)
+    acc = exact_match.compute(
+        predictions=[_norm(t) for t in preds_txt],
+        references=[_norm(t) for t in labels_txt]
+    )["exact_match"]
+    return {"exact_match": acc}
 
-    logging.info("Loading model and tokenizer...")
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model = AutoModelForCausalLM.from_pretrained(args.model_name)
 
-    # Load datasets directly from Arrow files.
-    logging.info("Loading the training dataset from Arrow file...")
-    train_dataset = load_arrow_dataset(args.train_file, args.max_records)
-    logging.info("Loading the evaluation dataset from Arrow file...")
-    eval_dataset = load_arrow_dataset(args.eval_file, args.max_records)
-    test_dataset = load_arrow_dataset(args.test_file, args.max_records) if args.test_file else None
+def show_examples(raw_ds, preds, tok, n=10):
+    print("\n──────── First {} examples ────────".format(n))
+    for i in range(min(n, len(raw_ds))):
+        q = f"What is the IUPAC name for the molecule {raw_ds[i]['smiles']}?"
+        gt = f"It is {raw_ds[i]['iupac']}"
+        pd = tok.decode(preds[i], skip_special_tokens=True).strip()
+        print(f"\n#{i}")
+        print("Q :", q)
+        print("GT:", gt)
+        print("PD:", pd)
 
-    if args.eval_limit and len(eval_dataset) > args.eval_limit:
-        eval_dataset = eval_dataset.select(range(args.eval_limit))
 
-    def tokenize_batch(examples):
-        """
-        For a batch of examples, create a chat-format prompt and tokenize it.
-        Each example creates a conversation where the user asks for the IUPAC name
-        given the molecule SMILES and the assistant provides the answer.
-        """
-        texts = []
-        for smiles, iupac in zip(examples["smiles"], examples["iupac"]):
-            messages = [
-                {"role": "system", "content": "You are a helpful chemistry professor."},
-                {"role": "user", "content": f"What is the IUPAC name for the molecule {smiles}?"},
-                {"role": "assistant", "content": f"It is {iupac}"}
-            ]
-            texts.append(tokenizer.apply_chat_template(conversation=messages, padding="max_length", truncation=True, max_length=args.max_length))
-        return {'input_ids': texts}
-#        return tokenizer(texts, padding="max_length", truncation=True, max_length=args.max_length)
+# ───────────────────────────── main ────────────────────────────────────
+parser = argparse.ArgumentParser()
+parser.add_argument("--train_file", required=True)
+parser.add_argument("--eval_file",  required=True)
+parser.add_argument("--test_file")
+parser.add_argument("--model_name", default="microsoft/phi-4")
+parser.add_argument("--output_dir", default="~/results")
+parser.add_argument("--max_records", type=int)
+parser.add_argument("--eval_limit",  type=int, default=50)
+parser.add_argument("--max_length",  type=int, default=512)
+parser.add_argument("--max_label_len", type=int, default=64)
+parser.add_argument("--max_new_tokens", type=int, default=32)
+parser.add_argument("--num_beams", type=int, default=1)
+parser.add_argument("--num_train_epochs", type=int, default=3)
+parser.add_argument("--per_device_train_batch_size", type=int, default=8)
+parser.add_argument("--per_device_eval_batch_size",  type=int, default=8)
+parser.add_argument("--logging_steps", type=int, default=500)
+parser.add_argument("--eval_steps",    type=int, default=1000)
+args = parser.parse_args()
 
-    # Tokenize the datasets using batched mapping.
-    logging.info("Tokenizing the training dataset in batches...")
-    train_dataset = train_dataset.map(
-        tokenize_batch,
-        batched=True,
-        batch_size=1000,
+logging.basicConfig(level=logging.INFO)
+tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+model     = AutoModelForCausalLM.from_pretrained(args.model_name)
+
+# ───────── load raw datasets ─────────
+train_raw = load_arrow_dataset(args.train_file, args.max_records)
+eval_raw  = load_arrow_dataset(args.eval_file, args.eval_limit or None)
+test_raw  = load_arrow_dataset(args.test_file) if args.test_file else None
+
+# ───────── tokenise datasets ─────────
+train_tok = train_raw.map(
+    lambda b: build_train_batch(tokenizer, b["smiles"], b["iupac"],
+                                args.max_length),
+    batched=True, batch_size=1000,
+    remove_columns=["smiles", "iupac"]
+)
+eval_tok = eval_raw.map(
+    lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
+                               args.max_length, args.max_label_len),
+    batched=True, batch_size=1000,
+    remove_columns=["smiles", "iupac"]
+)
+test_tok = None
+if test_raw:
+    test_tok = test_raw.map(
+        lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
+                                   args.max_length, args.max_label_len),
+        batched=True, batch_size=1000,
         remove_columns=["smiles", "iupac"]
     )
-    train_dataset = train_dataset.add_column('labels', train_dataset['input_ids'].copy())
-    logging.info("Tokenizing the evaluation dataset in batches...")
-    eval_dataset = eval_dataset.map(
-        tokenize_batch,
-        batched=True,
-        batch_size=1000,
-        remove_columns=["smiles", "iupac"]
-    )
-    eval_dataset = eval_dataset.add_column('labels', eval_dataset['input_ids'].copy())
 
-    if test_dataset is not None:
-        logging.info("Tokenizing the test dataset in batches...")
-        test_dataset = test_dataset.map(
-            tokenize_batch,
-            batched=True,
-            batch_size=1000,
-            remove_columns=["smiles", "iupac"]
-        )
-        test_dataset = test_dataset.add_column('labels', test_dataset['input_ids'].copy())
+# ───────── FREE large raw datasets to save RAM ─────────
+del train_raw, test_raw
+gc.collect()
 
-    # Set up TrainingArguments.
-    training_args = TrainingArguments(
-        output_dir=str(Path(args.output_dir).expanduser()),
-        num_train_epochs=args.num_train_epochs,
-        per_device_train_batch_size=args.per_device_train_batch_size,
-        per_device_eval_batch_size=args.per_device_eval_batch_size,
-        logging_steps=args.logging_steps,
-        eval_strategy="steps",
-        eval_steps=args.eval_steps,
-        save_total_limit=2,
-        logging_dir=os.path.join(args.output_dir, "logs"),
-        # load_best_model_at_end=True,
-        metric_for_best_model="perplexity",
-        eval_accumulation_steps=1,
-    )
+# ───────── training setup ─────────
+targs = TrainingArguments(
+    output_dir=str(Path(args.output_dir).expanduser()),
+    evaluation_strategy="steps",
+    eval_steps=args.eval_steps,
+    predict_with_generate=True,
+    generation_max_new_tokens=args.max_new_tokens,
+    generation_num_beams=args.num_beams,
+    num_train_epochs=args.num_train_epochs,
+    per_device_train_batch_size=args.per_device_train_batch_size,
+    per_device_eval_batch_size=args.per_device_eval_batch_size,
+    logging_steps=args.logging_steps,
+    save_total_limit=2,
+    metric_for_best_model="exact_match",
+)
 
-    # Initialize the Trainer.
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        compute_metrics=compute_metrics,
-    )
+trainer = Trainer(
+    model=model,
+    args=targs,
+    train_dataset=train_tok,
+    eval_dataset=eval_tok,
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,
+)
 
-    # Train and evaluate.
-    logging.info("Starting training...")
-    trainer.train()
-    logging.info("Training complete. Evaluating the model on the evaluation dataset...")
-    eval_results = trainer.evaluate()
-    logging.info(f"Evaluation Results: {eval_results}")
-    print_predictions(trainer, eval_dataset, tokenizer, "validation")
+logging.info("Starting training …")
+trainer.train()
 
-    if test_dataset is not None:
-        logging.info("Evaluating the model on the test dataset...")
-        test_results = trainer.evaluate(test_dataset)
-        logging.info(f"Test Results: {test_results}")
-        print_predictions(trainer, test_dataset, tokenizer, "test")
+val_metrics = trainer.evaluate()
+logging.info("Validation metrics: %s", val_metrics)
+val_preds = trainer.predict(eval_tok).predictions
+show_examples(eval_raw, val_preds, tokenizer, n=10)
 
-    # Save the model.
-    logging.info("Saving the final model...")
-    trainer.save_model(args.output_dir)
-    logging.info("All done.")
+if test_tok:
+    test_metrics = trainer.evaluate(eval_dataset=test_tok)
+    logging.info("Test metrics: %s", test_metrics)
+    test_preds = trainer.predict(test_tok).predictions
+    show_examples(eval_raw if test_raw is None else test_raw,
+                  test_preds, tokenizer, n=10)
 
-
-if __name__ == "__main__":
-    main()
+trainer.save_model(args.output_dir)
+logging.info("Model saved to %s", args.output_dir)
