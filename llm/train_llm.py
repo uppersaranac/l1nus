@@ -115,6 +115,30 @@ def compute_metrics(eval_preds):
     perplexity = math.exp(loss) if loss < 100 else float("inf")
     return {"accuracy": accuracy, "perplexity": perplexity}
 
+# ---------------------------------------------------------------------
+# Pretty‑print helper
+# ---------------------------------------------------------------------
+def print_predictions(trainer: Trainer, dataset: Dataset, tokenizer, title: str):
+    """
+    Runs `trainer.predict()` on *dataset*, decodes predictions & labels,
+    and prints them side‑by‑side.
+    """
+    logging.info("Decoding %s set predictions …", title)
+    output = trainer.predict(dataset)
+    pred_ids = np.argmax(output.predictions, axis=-1)
+
+    # Replace -100 in labels with pad token so we can decode cleanly
+    pad_id = tokenizer.pad_token_id
+    label_ids = np.where(output.label_ids == -100, pad_id, output.label_ids)
+
+    predictions = tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+    references  = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
+
+    for i, (ref, pred) in enumerate(zip(references, predictions)):
+        print(f"\n—— {title} example {i} ——")
+        print("GROUND TRUTH:", ref.strip())
+        print("PREDICTED   :", pred.strip())
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -125,6 +149,7 @@ def main():
     parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
     parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
     parser.add_argument("--max_records", type=int, default=1000, help="Limit number of records loaded for training.")
+    parser.add_argument("--eval_limit",  type=int, default=50)
     parser.add_argument("--max_length", type=int, default=512, help="Max sequence length for tokenization.")
     parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs.")
     parser.add_argument("--per_device_train_batch_size", type=int, default=8, help="Training batch size per device.")
@@ -148,6 +173,9 @@ def main():
     logging.info("Loading the evaluation dataset from Arrow file...")
     eval_dataset = load_arrow_dataset(args.eval_file, args.max_records)
     test_dataset = load_arrow_dataset(args.test_file, args.max_records) if args.test_file else None
+
+    if args.eval_limit and len(eval_dataset) > args.eval_limit:
+        eval_dataset = eval_dataset.select(range(args.eval_limit))
 
     def tokenize_batch(examples):
         """
@@ -204,7 +232,7 @@ def main():
         eval_steps=args.eval_steps,
         save_total_limit=2,
         logging_dir=os.path.join(args.output_dir, "logs"),
- #       load_best_model_at_end=True,
+        load_best_model_at_end=True,
         metric_for_best_model="perplexity",
         eval_accumulation_steps=1,
     )
@@ -224,11 +252,13 @@ def main():
     logging.info("Training complete. Evaluating the model on the evaluation dataset...")
     eval_results = trainer.evaluate()
     logging.info(f"Evaluation Results: {eval_results}")
+    print_predictions(trainer, eval_dataset, tokenizer, "validation")
 
     if test_dataset is not None:
         logging.info("Evaluating the model on the test dataset...")
         test_results = trainer.evaluate(test_dataset)
         logging.info(f"Test Results: {test_results}")
+        print_predictions(trainer, test_dataset, tokenizer, "test")
 
     # Save the model.
     logging.info("Saving the final model...")
