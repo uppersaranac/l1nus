@@ -186,6 +186,7 @@ def main():
         texts = []
         for smiles, iupac in zip(examples["smiles"], examples["iupac"]):
             messages = [
+                {"role": "system", "content": "You are a helpful chemistry professor."},
                 {"role": "user", "content": f"What is the IUPAC name for the molecule {smiles}?"},
                 {"role": "assistant", "content": f"It is {iupac}"}
             ]
@@ -232,7 +233,7 @@ def main():
         eval_steps=args.eval_steps,
         save_total_limit=2,
         logging_dir=os.path.join(args.output_dir, "logs"),
-        load_best_model_at_end=True,
+        # load_best_model_at_end=True,
         metric_for_best_model="perplexity",
         eval_accumulation_steps=1,
     )
