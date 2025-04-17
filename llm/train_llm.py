@@ -1,15 +1,17 @@
 #!/usr/bin/env python
+from __future__ import annotations
 import argparse, logging, gc
 from pathlib import Path
 
 import numpy as np
+import torch
 import evaluate
 from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     Trainer,
-    TrainingArguments,
+    Seq2SeqTrainingArguments,
 )
 
 
@@ -84,46 +86,49 @@ def build_train_batch(tok, smiles, iupac, max_len):
     msgs = [
         [
             {"role": "system",    "content": SYSTEM_PROMPT},
-            {"role": "user",
-             "content": f"What is the IUPAC name for the molecule {s}?"},
+            {"role": "user",      "content": f"What is the IUPAC name for the molecule {s}?"},
             {"role": "assistant", "content": f"It is {i}"}
         ]
         for s, i in zip(smiles, iupac)
     ]
-    enc = tok([tok.apply_chat_template(m) for m in msgs],
-              truncation=True, padding="max_length", max_length=max_len)
+    # Step 1: Get prompt strings
+    prompts = [tok.apply_chat_template(m, tokenize=False) for m in msgs]
+
+    # Step 2: Tokenize prompts
+    enc = tok(prompts, padding="max_length", truncation=True,
+              max_length=max_len, return_tensors="np")
     enc["labels"] = enc["input_ids"].copy()
     return enc
 
-
 def build_eval_batch(tok, smiles, iupac,
                      max_prompt_len, max_label_len):
-    user_prompts = [
+    user_msgs = [
         [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",
-             "content": f"What is the IUPAC name for the molecule {s}?"}
+            {"role": "user",   "content": f"What is the IUPAC name for the molecule {s}?"}
         ]
         for s in smiles
     ]
-    prompt_enc = tok(
-        [tok.apply_chat_template(m, add_generation_prompt=True)
-         for m in user_prompts],
-        truncation=True, padding="max_length", max_length=max_prompt_len,
-    )
 
+    # Step 1: Prompt strings
+    prompts = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False)
+               for m in user_msgs]
+
+    # Step 2: Tokenize prompts
+    prompt_enc = tok(prompts, padding="max_length", truncation=True,
+                     max_length=max_prompt_len, return_tensors="np")
+
+    # Labels: tokenize only the answer
     ans_enc = tok([f"It is {i}" for i in iupac],
                   truncation=True, add_special_tokens=False,
-                  max_length=max_label_len)
+                  max_length=max_label_len, return_tensors="np")
 
     pad = tok.pad_token_id
     labels = [
-        ids + [pad] * (max_label_len - len(ids))
+        ids.tolist() + [pad] * (max_label_len - len(ids))
         for ids in ans_enc["input_ids"]
     ]
-    prompt_enc["labels"] = (
-        np.where(np.array(labels) == pad, -100, labels).tolist()
-    )
+    prompt_enc["labels"] = labels
     return prompt_enc
 
 
@@ -169,16 +174,16 @@ def show_examples(raw_ds, preds, tok, n=10):
 
 # ───────────────────────────── main ────────────────────────────────────
 parser = argparse.ArgumentParser()
-parser.add_argument("--train_file", required=True)
-parser.add_argument("--eval_file",  required=True)
-parser.add_argument("--test_file")
-parser.add_argument("--model_name", default="microsoft/phi-4")
-parser.add_argument("--output_dir", default="~/results")
-parser.add_argument("--max_records", type=int)
-parser.add_argument("--eval_limit",  type=int, default=50)
+parser.add_argument("--train_file", type=str, default='~/data/pubchem/arrow/test_train.arrow', help="Path to the training Arrow file.")
+parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/test_valid.arrow', help="Path to the evaluation Arrow file.")
+parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
+parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
+parser.add_argument("--model_name", default="Qwen/Qwen2.5-0.5B-Instruct")
+parser.add_argument("--max_records", default=10, type=int)
+parser.add_argument("--eval_limit",  type=int, default=10)
 parser.add_argument("--max_length",  type=int, default=512)
-parser.add_argument("--max_label_len", type=int, default=64)
-parser.add_argument("--max_new_tokens", type=int, default=32)
+parser.add_argument("--max_label_len", type=int, default=256)
+parser.add_argument("--max_new_tokens", type=int, default=256)
 parser.add_argument("--num_beams", type=int, default=1)
 parser.add_argument("--num_train_epochs", type=int, default=3)
 parser.add_argument("--per_device_train_batch_size", type=int, default=8)
@@ -189,7 +194,10 @@ args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
 tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-model     = AutoModelForCausalLM.from_pretrained(args.model_name)
+# ensure left‑padding for causal generation and set pad to EOS
+tokenizer.padding_side = "left"
+tokenizer.pad_token = tokenizer.eos_token
+model = AutoModelForCausalLM.from_pretrained(args.model_name)
 
 # ───────── load raw datasets ─────────
 train_raw = load_arrow_dataset(args.train_file, args.max_records)
@@ -223,12 +231,12 @@ del train_raw, test_raw
 gc.collect()
 
 # ───────── training setup ─────────
-targs = TrainingArguments(
+targs = Seq2SeqTrainingArguments(
     output_dir=str(Path(args.output_dir).expanduser()),
-    evaluation_strategy="steps",
+    eval_strategy="steps",
     eval_steps=args.eval_steps,
     predict_with_generate=True,
-    generation_max_new_tokens=args.max_new_tokens,
+    generation_max_length=args.max_new_tokens,
     generation_num_beams=args.num_beams,
     num_train_epochs=args.num_train_epochs,
     per_device_train_batch_size=args.per_device_train_batch_size,
@@ -250,15 +258,44 @@ trainer = Trainer(
 logging.info("Starting training …")
 trainer.train()
 
-val_metrics = trainer.evaluate()
-logging.info("Validation metrics: %s", val_metrics)
-val_preds = trainer.predict(eval_tok).predictions
+logging.info("Generating validation predictions …")
+eval_tok.set_format(type="torch", columns=["input_ids", "attention_mask"])
+val_input_ids = eval_tok["input_ids"].to(model.device)
+val_attention_mask = eval_tok["attention_mask"].to(model.device)
+# drop the final token (EOS or pad) so generation will produce new tokens
+val_input_ids      = val_input_ids[:, :-1]
+val_attention_mask = val_attention_mask[:, :-1]
+
+val_preds = model.generate(
+    input_ids=val_input_ids,
+    attention_mask=val_attention_mask,
+    max_new_tokens=args.max_new_tokens,
+    num_beams=args.num_beams,
+)
 show_examples(eval_raw, val_preds, tokenizer, n=10)
+
+# manually compute metrics
+labels = eval_tok["labels"]
+val_metrics = compute_metrics((val_preds, np.array(labels)))
+logging.info("Validation metrics: %s", val_metrics)
 
 if test_tok:
     test_metrics = trainer.evaluate(eval_dataset=test_tok)
     logging.info("Test metrics: %s", test_metrics)
-    test_preds = trainer.predict(test_tok).predictions
+    test_inputs = test_tok["input_ids"]
+    test_tok.set_format(type="torch", columns=["input_ids", "attention_mask"])
+    test_input_ids = test_tok["input_ids"].to(model.device)
+    test_attention_mask = test_tok["attention_mask"].to(model.device)
+    # drop the final token so generation will actually happen
+    test_input_ids      = test_input_ids[:, :-1]
+    test_attention_mask = test_attention_mask[:, :-1]
+    
+    test_preds = model.generate(
+        input_ids=test_input_ids,
+        attention_mask=test_attention_mask,
+        max_new_tokens=args.max_new_tokens,
+        num_beams=args.num_beams,
+    )
     show_examples(eval_raw if test_raw is None else test_raw,
                   test_preds, tokenizer, n=10)
 
