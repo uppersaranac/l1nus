@@ -179,15 +179,17 @@ parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/test_
 parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
 parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
 parser.add_argument("--model_name", default="Qwen/Qwen2.5-0.5B-Instruct")
-parser.add_argument("--max_records", default=10, type=int)
+parser.add_argument("--max_records", default=None, type=int)
 parser.add_argument("--eval_limit",  type=int, default=10)
 parser.add_argument("--max_length",  type=int, default=512)
 parser.add_argument("--max_label_len", type=int, default=256)
 parser.add_argument("--max_new_tokens", type=int, default=256)
 parser.add_argument("--num_beams", type=int, default=1)
-parser.add_argument("--num_train_epochs", type=int, default=3)
-parser.add_argument("--per_device_train_batch_size", type=int, default=8)
-parser.add_argument("--per_device_eval_batch_size",  type=int, default=8)
+parser.add_argument("--num_train_epochs", type=int, default=10)
+parser.add_argument("--map_num_proc", type=int, default=64,
+                    help="Number of parallel processes to use in dataset.map")
+parser.add_argument("--per_device_train_batch_size", type=int, default=32)
+parser.add_argument("--per_device_eval_batch_size",  type=int, default=10)
 parser.add_argument("--logging_steps", type=int, default=500)
 parser.add_argument("--eval_steps",    type=int, default=1000)
 args = parser.parse_args()
@@ -209,13 +211,15 @@ train_tok = train_raw.map(
     lambda b: build_train_batch(tokenizer, b["smiles"], b["iupac"],
                                 args.max_length),
     batched=True, batch_size=1000,
-    remove_columns=["smiles", "iupac"]
+    remove_columns=["smiles", "iupac"],
+    num_proc=args.map_num_proc
 )
 eval_tok = eval_raw.map(
     lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
                                args.max_length, args.max_label_len),
     batched=True, batch_size=1000,
-    remove_columns=["smiles", "iupac"]
+    remove_columns=["smiles", "iupac"],
+    num_proc=args.map_num_proc
 )
 test_tok = None
 if test_raw:
@@ -223,7 +227,8 @@ if test_raw:
         lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
                                    args.max_length, args.max_label_len),
         batched=True, batch_size=1000,
-        remove_columns=["smiles", "iupac"]
+        remove_columns=["smiles", "iupac"],
+        num_proc=args.map_num_proc
     )
 
 # ───────── FREE large raw datasets to save RAM ─────────
