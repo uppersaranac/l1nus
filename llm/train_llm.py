@@ -97,7 +97,28 @@ def build_train_batch(tok, smiles, iupac, max_len):
     # Step 2: Tokenize prompts
     enc = tok(prompts, padding="max_length", truncation=True,
               max_length=max_len, return_tensors="np")
-    enc["labels"] = enc["input_ids"].copy()
+
+    # Prepare answer token IDs without special tokens
+    answers_ids = [tok(text, add_special_tokens=False)["input_ids"] for text in iupac]
+    input_ids_list = enc["input_ids"].tolist()
+
+    labels_full = []
+    for row_ids, ans_ids in zip(input_ids_list, answers_ids):
+        # Find the start index of the answer tokens within the input_ids sequence
+        start_idx = -1
+        for i in range(len(row_ids) - len(ans_ids) + 1):
+            if row_ids[i : i + len(ans_ids)] == ans_ids:
+                start_idx = i
+                break
+        if start_idx < 0:
+            raise ValueError("Answer token sequence not found in the prompt encoding.")
+        # Build label row: mask (-100) everywhere except the answer span
+        label = [-100] * len(row_ids)
+        for j, tok_id in enumerate(ans_ids):
+            label[start_idx + j] = tok_id
+        labels_full.append(label)
+
+    enc["labels"] = labels_full
     return enc
 
 def build_eval_batch(tok, smiles, iupac,
@@ -281,7 +302,7 @@ trainer = Trainer(
 )
 
 logging.info("Starting training …")
-# trainer.train()
+trainer.train()
 
 logging.info("Generating validation predictions …")
 eval_tok.set_format(type="torch", columns=["input_ids", "attention_mask"])
