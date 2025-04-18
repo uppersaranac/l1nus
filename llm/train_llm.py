@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse, logging, gc
 from pathlib import Path
+import os
 
 import numpy as np
 import torch
@@ -68,7 +69,6 @@ and add an argument to limit the number of records loaded for training. Instead 
 Fine‑tune an instruction‑tuned causal‑LM on a SMILES → IUPAC Q&A task
 and evaluate by *generation* (model sees only the question).
 
-System prompt: "You are a helpful chemistry professor."
 """
 
 SYSTEM_PROMPT = "You are a helpful chemistry professor."
@@ -87,7 +87,7 @@ def build_train_batch(tok, smiles, iupac, max_len):
         [
             {"role": "system",    "content": SYSTEM_PROMPT},
             {"role": "user",      "content": f"What is the IUPAC name for the molecule {s}?"},
-            {"role": "assistant", "content": f"It is {i}"}
+            {"role": "assistant", "content": f"{i}"}
         ]
         for s, i in zip(smiles, iupac)
     ]
@@ -119,16 +119,21 @@ def build_eval_batch(tok, smiles, iupac,
                      max_length=max_prompt_len, return_tensors="np")
 
     # Labels: tokenize only the answer
-    ans_enc = tok([f"It is {i}" for i in iupac],
+    ans_enc = tok([f"{i}" for i in iupac],
                   truncation=True, add_special_tokens=False,
                   max_length=max_label_len, return_tensors="np")
 
-    pad = tok.pad_token_id
-    labels = [
-        ids.tolist() + [pad] * (max_label_len - len(ids))
-        for ids in ans_enc["input_ids"]
-    ]
-    prompt_enc["labels"] = labels
+    # Build labels matching the full sequence length, ignoring prompt tokens
+    answers = ans_enc["input_ids"].tolist()
+    labels_full = []
+    for answer in answers:
+        # Initialize all positions to ignore_index (-100)
+        label = [-100] * max_prompt_len
+        # Right-align the answer tokens at the end of the sequence
+        offset = max_prompt_len - len(answer)
+        label[offset:] = answer
+        labels_full.append(label)
+    prompt_enc["labels"] = labels_full
     return prompt_enc
 
 
@@ -145,19 +150,34 @@ def _norm(s: str) -> str:
 
 def compute_metrics(eval_preds):
     preds, labels = eval_preds
-    preds_txt = tokenizer.batch_decode(preds, skip_special_tokens=True)
+    # Convert logits to predicted token IDs if needed
+    if preds.ndim == 3:
+        preds_ids = np.argmax(preds, axis=-1)
+    else:
+        preds_ids = preds
 
-    pad_id = tokenizer.pad_token_id
-    labels_txt = tokenizer.batch_decode(
-        np.where(labels == -100, pad_id, labels),
-        skip_special_tokens=True
-    )
+    # Extract only answer tokens based on label mask
+    preds_answer_ids = []
+    labels_answer_ids = []
+    for pred_row, label_row in zip(preds_ids, labels):
+        mask = label_row != -100
+        preds_answer_ids.append(pred_row.tolist())
+        labels_answer_ids.append(label_row[mask].tolist())
 
-    acc = exact_match.compute(
-        predictions=[_norm(t) for t in preds_txt],
-        references=[_norm(t) for t in labels_txt]
-    )["exact_match"]
-    return {"exact_match": acc}
+    # Decode the answer sequences
+    preds_txt = [tokenizer.decode(ids, skip_special_tokens=True).strip()
+                 for ids in preds_answer_ids]
+    labels_txt = [tokenizer.decode(ids, skip_special_tokens=True).strip()
+                  for ids in labels_answer_ids]
+
+    # Compute exact match accuracy on the IUPAC names
+    matches = []
+    for pred, label in zip(preds_txt, labels_txt):
+        if labels_txt in preds_txt:
+            matches.append(1.0)
+        else:
+            matches.append(0.0)
+    return {"exact_match": sum(matches)/len(matches)}
 
 
 def show_examples(raw_ds, preds, tok, n=10):
@@ -179,19 +199,19 @@ parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/test_
 parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
 parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
 parser.add_argument("--model_name", default="Qwen/Qwen2.5-0.5B-Instruct")
-parser.add_argument("--max_records", default=None, type=int)
+parser.add_argument("--max_records", default=100, type=int)
 parser.add_argument("--eval_limit",  type=int, default=10)
-parser.add_argument("--max_length",  type=int, default=512)
-parser.add_argument("--max_label_len", type=int, default=256)
-parser.add_argument("--max_new_tokens", type=int, default=256)
+parser.add_argument("--max_length",  type=int, default=128)
+parser.add_argument("--max_label_len", type=int, default=128)
+parser.add_argument("--max_new_tokens", type=int, default=128)
 parser.add_argument("--num_beams", type=int, default=1)
-parser.add_argument("--num_train_epochs", type=int, default=10)
-parser.add_argument("--map_num_proc", type=int, default=64,
+parser.add_argument("--num_train_epochs", type=int, default=1)
+parser.add_argument("--map_num_proc", type=int, default=os.cpu_count()-2,
                     help="Number of parallel processes to use in dataset.map")
-parser.add_argument("--per_device_train_batch_size", type=int, default=32)
+parser.add_argument("--per_device_train_batch_size", type=int, default=24)
 parser.add_argument("--per_device_eval_batch_size",  type=int, default=10)
 parser.add_argument("--logging_steps", type=int, default=500)
-parser.add_argument("--eval_steps",    type=int, default=1000)
+parser.add_argument("--eval_steps",    type=int, default=1)
 args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
@@ -261,7 +281,7 @@ trainer = Trainer(
 )
 
 logging.info("Starting training …")
-trainer.train()
+# trainer.train()
 
 logging.info("Generating validation predictions …")
 eval_tok.set_format(type="torch", columns=["input_ids", "attention_mask"])
