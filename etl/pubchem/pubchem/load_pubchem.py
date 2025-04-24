@@ -140,7 +140,7 @@ def main():
     parser.add_argument("--n_cores", type=int, default=cpu_count(), help="Number of cores to use")
     args = parser.parse_args()
 
-    sdf_files = [f for pattern in args.sdf_files for f in glob.glob(pattern)]
+    sdf_files = [f for pattern in args.sdf_files for f in sorted(glob.glob(pattern))]
     max_records = args.max_records if args.max_records > 0 else None
 
     with Progress(
@@ -164,7 +164,7 @@ def main():
                 progress.update(task, advance=1)
     with pa.OSFile(str(args.output), 'wb') as sink:
         with pa.RecordBatchFileWriter(sink, schema) as writer:
-            for path in output_files:
+            for path in sorted(output_files):
                 table = pa.ipc.RecordBatchFileReader(pa.OSFile(str(path), 'r')).read_all()
                 writer.write_table(table)
 
