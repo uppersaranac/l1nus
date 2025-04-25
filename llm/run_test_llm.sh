@@ -8,5 +8,5 @@
 #SBATCH --mail-type=all
 
 source ~/source/masskit/.venv/bin/activate
-python train_llm.py --max_records 100000 --train_file ~/data/pubchem/arrow/iupac_train.arrow --eval_file ~/data/pubchem/arrow/iupac_valid.arrow
+python train_llm.py --num_train_epochs 3 --eval_steps 1000 --eval_limit 30 --max_records 0 --train_file ~/data/pubchem/arrow/cluster_6M_train.arrow --eval_file ~/data/pubchem/arrow/cluster_6M_eval.arrow
 
