@@ -71,12 +71,12 @@ and evaluate by *generation* (model sees only the question).
 
 """
 
-SYSTEM_PROMPT = "You are a helpful chemistry professor."
+SYSTEM_PROMPT = "You are a helpful chemistry professor. Examine any molecules step by step. Only provide one name."
 
 # ─────────────────────────── data helper ──────────────────────────────
 def load_arrow_dataset(path: str, limit: int | None = None) -> Dataset:
     ds = Dataset.from_file(str(Path(path).expanduser()))
-    if limit and len(ds) > limit:
+    if limit and limit > 0 and len(ds) > limit:
         ds = ds.select(range(limit))
     return ds
 
@@ -87,7 +87,7 @@ def build_train_batch(tok, smiles, iupac, max_len):
         [
             {"role": "system",    "content": SYSTEM_PROMPT},
             {"role": "user",      "content": f"What is the IUPAC name for the molecule {s}?"},
-            {"role": "assistant", "content": f"{i}"}
+            {"role": "assistant", "content": f"{i}{tok.eos_token}"}
         ]
         for s, i in zip(smiles, iupac)
     ]
@@ -103,19 +103,20 @@ def build_train_batch(tok, smiles, iupac, max_len):
     input_ids_list = enc["input_ids"].tolist()
 
     labels_full = []
-    for row_ids, ans_ids in zip(input_ids_list, answers_ids):
+    for row_ids, ans_ids, smile in zip(input_ids_list, answers_ids, smiles):
         # Find the start index of the answer tokens within the input_ids sequence
         start_idx = -1
         for i in range(len(row_ids) - len(ans_ids) + 1):
-            if row_ids[i : i + len(ans_ids)] == ans_ids:
+            if row_ids[i : i + len(ans_ids)] == ans_ids[:len(row_ids)-i]:
                 start_idx = i
                 break
-        if start_idx < 0:
-            raise ValueError("Answer token sequence not found in the prompt encoding.")
-        # Build label row: mask (-100) everywhere except the answer span
         label = [-100] * len(row_ids)
-        for j, tok_id in enumerate(ans_ids):
-            label[start_idx + j] = tok_id
+        if start_idx >= 0:
+            # Build label row: mask (-100) everywhere except the answer span
+            for j, tok_id in enumerate(ans_ids):
+                label[start_idx + j] = tok_id
+        else:
+            print(f"Warning: Answer not found in input_ids for SMILES: {smile}")
         labels_full.append(label)
 
     enc["labels"] = labels_full
@@ -140,7 +141,7 @@ def build_eval_batch(tok, smiles, iupac,
                      max_length=max_prompt_len, return_tensors="np")
 
     # Labels: tokenize only the answer
-    ans_enc = tok([f"{i}" for i in iupac],
+    ans_enc = tok([f"{i}{tok.eos_token}" for i in iupac],
                   truncation=True, add_special_tokens=False,
                   max_length=max_label_len, return_tensors="np")
 
@@ -215,24 +216,26 @@ def show_examples(raw_ds, preds, tok, n=10):
 
 # ───────────────────────────── main ────────────────────────────────────
 parser = argparse.ArgumentParser()
-parser.add_argument("--train_file", type=str, default='~/data/pubchem/arrow/test_train.arrow', help="Path to the training Arrow file.")
-parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/test_valid.arrow', help="Path to the evaluation Arrow file.")
+parser.add_argument("--train_file", type=str, default='~/data/pubchem/arrow/cluster_100k_train.arrow', help="Path to the training Arrow file.")
+parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/cluster_100k_eval.arrow', help="Path to the evaluation Arrow file.")
 parser.add_argument("--test_file", type=str, default=None, help="Path to the test Arrow file (optional).")
 parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
-parser.add_argument("--model_name", default="Qwen/Qwen2.5-0.5B-Instruct")
-parser.add_argument("--max_records", default=100, type=int)
+# parser.add_argument("--model_name", default="microsoft/phi-4")
+# parser.add_argument("--model_name", default="Qwen/Qwen2.5-0.5B-Instruct")
+parser.add_argument("--model_name", default="Qwen/Qwen2.5-1.5B-Instruct")
+parser.add_argument("--max_records", default=8700, type=int)
 parser.add_argument("--eval_limit",  type=int, default=10)
-parser.add_argument("--max_length",  type=int, default=128)
-parser.add_argument("--max_label_len", type=int, default=128)
-parser.add_argument("--max_new_tokens", type=int, default=128)
+parser.add_argument("--max_length",  type=int, default=1024)
+parser.add_argument("--max_label_len", type=int, default=1024)
+parser.add_argument("--max_new_tokens", type=int, default=1024)
 parser.add_argument("--num_beams", type=int, default=1)
 parser.add_argument("--num_train_epochs", type=int, default=1)
 parser.add_argument("--map_num_proc", type=int, default=os.cpu_count()-2,
                     help="Number of parallel processes to use in dataset.map")
-parser.add_argument("--per_device_train_batch_size", type=int, default=24)
-parser.add_argument("--per_device_eval_batch_size",  type=int, default=10)
-parser.add_argument("--logging_steps", type=int, default=500)
-parser.add_argument("--eval_steps",    type=int, default=1)
+parser.add_argument("--per_device_train_batch_size", type=int, default=4)
+parser.add_argument("--per_device_eval_batch_size",  type=int, default=4)
+parser.add_argument("--logging_steps", type=int, default=50)
+parser.add_argument("--eval_steps",    type=int, default=10)
 args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
@@ -290,6 +293,9 @@ targs = Seq2SeqTrainingArguments(
     logging_steps=args.logging_steps,
     save_total_limit=2,
     metric_for_best_model="exact_match",
+    tf32=True,
+    bf16=True,
+    gradient_accumulation_steps=4
 )
 
 trainer = Trainer(
@@ -317,6 +323,10 @@ val_preds = model.generate(
     attention_mask=val_attention_mask,
     max_new_tokens=args.max_new_tokens,
     num_beams=args.num_beams,
+    do_sample=True,
+    top_p=0.95,
+    temperature=0.8,
+    eos_token_id=tokenizer.eos_token_id,
 )
 show_examples(eval_raw, val_preds, tokenizer, n=10)
 
@@ -341,6 +351,10 @@ if test_tok:
         attention_mask=test_attention_mask,
         max_new_tokens=args.max_new_tokens,
         num_beams=args.num_beams,
+        do_sample=True,
+        top_p=0.95,
+        temperature=0.8,
+        eos_token_id=tokenizer.eos_token_id,
     )
     show_examples(eval_raw if test_raw is None else test_raw,
                   test_preds, tokenizer, n=10)
