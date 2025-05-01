@@ -204,7 +204,7 @@ def compute_metrics(eval_preds):
 
 def show_examples(raw_ds, preds, tok, n=10):
     print("\n──────── First {} examples ────────".format(n))
-    for i in range(min(n, len(raw_ds))):
+    for i in range(0, len(raw_ds), len(raw_ds)//n):
         q = f"What is the IUPAC name for the molecule {raw_ds[i]['smiles']}?"
         gt = f"It is {raw_ds[i]['iupac']}"
         pd = tok.decode(preds[i], skip_special_tokens=True).strip()
@@ -243,7 +243,8 @@ tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 # ensure left‑padding for causal generation and set pad to EOS
 tokenizer.padding_side = "left"
 tokenizer.pad_token = tokenizer.eos_token
-model = AutoModelForCausalLM.from_pretrained(args.model_name)
+model = AutoModelForCausalLM.from_pretrained(args.model_name,
+                                             torch_dtype=torch.bfloat16)
 
 # ───────── load raw datasets ─────────
 train_raw = load_arrow_dataset(args.train_file, args.max_records)
@@ -293,7 +294,7 @@ targs = Seq2SeqTrainingArguments(
     logging_steps=args.logging_steps,
     save_total_limit=2,
     metric_for_best_model="exact_match",
-    tf32=True,
+#    tf32=True,
     bf16=True,
     gradient_accumulation_steps=4
 )
@@ -359,5 +360,5 @@ if test_tok:
     show_examples(eval_raw if test_raw is None else test_raw,
                   test_preds, tokenizer, n=10)
 
-trainer.save_model(args.output_dir)
+trainer.save_model(str(Path(args.output_dir).expanduser()))
 logging.info("Model saved to %s", args.output_dir)
