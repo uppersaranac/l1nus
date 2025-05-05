@@ -1,20 +1,18 @@
 #!/bin/bash
-#SBATCH -J llm-accel
-#SBATCH -p gh
-#SBATCH -N 2
-#SBATCH --gpus-per-node=1
+#SBATCH -J train_llm_mpi           # Job name
+#SBATCH -t 36:00:00              # Wall time (1 hour)
+#SBATCH -N 2                    # Number of nodes
+#SBATCH -p gh                    # GPU partition (modify as needed)
+#SBATCH --mail-user=lewis.geer@gmail.com
+#SBATCH --mail-type=all
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
-#SBATCH -t 24:00:00
 #SBATCH -o logs/%x_%j.out
 #SBATCH -e logs/%x_%j.err
 # ----------------------------------------------------------
 
 module purge
-module load gcc
-module load cuda
-# module load openmpi/4.1.5
-module load python3_mpi            # MPI-enabled interpreter
+module load gcc cuda openmpi python3_mpi
 
 # activate your uv venv that was built with python3_mpi
 source ~/source/l1nus/llm/.venv/bin/activate
@@ -31,20 +29,21 @@ export MASTER_ADDR=$(scontrol show hostnames $SLURM_NODELIST | head -n 1)
 export MASTER_PORT=29500
 
 # --- Launch training ------------------------------------------------
-srun --mpi=pmix_v4 \
+srun --mpi=pmix \
      accelerate launch                       \
+        --config_file mpi_config.json \
         --num_processes   $SLURM_NTASKS      \
         --num_machines    $SLURM_NNODES      \
         --machine_rank    $SLURM_PROCID      \
+        --main_process_ip    $MASTER_ADDR      \
+        --main_process_ip    $MASTER_PORT      \
         train_llm.py                          \
-            --model_name_or_path facebook/opt-1.3b \
-            --dataset_name my_corpus                \
-            --output_dir $WORK/llm_ckpt/opt1.3b     \
-            --per_device_train_batch_size 4         \
-            --gradient_accumulation_steps 8         \
-            --learning_rate 2e-5                    \
-            --num_train_epochs 3                    \
-            --logging_steps 50                      \
-            --save_steps 500                        \
-            --bf16                                  \
+            --max_records 0                \
+            --output_dir ~/results/$SLURM_JOB_ID     \
+            --num_train_epochs 3 \
+            --eval_steps 1000 \
+            --eval_limit 30 \
+            --max_records 0 \
+            --train_file ~/data/pubchem/arrow/cluster_6M_train.arrow \
+            --eval_file ~/data/pubchem/arrow/cluster_6M_eval.arrow
 #            --deepspeed ds_config.json              # if you enabled Deepspeed
