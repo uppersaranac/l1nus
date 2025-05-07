@@ -51,9 +51,9 @@ export LAUNCHER="python"
 
 export SCRIPT="train_llm.py"
 
-export ARGS="--max_records 20000 \
+export ARGS="--max_records 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
---num_train_epochs 1 \
+--num_train_epochs 5 \
 --eval_steps 1000 \
 --eval_limit 30 \
 --train_file ~/data/pubchem/arrow/cluster_6M_train.arrow \
