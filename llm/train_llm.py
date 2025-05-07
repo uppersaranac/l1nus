@@ -82,7 +82,8 @@ parser.add_argument("--test_file", type=str, default=None, help="Path to the tes
 parser.add_argument("--output_dir", type=str, default="~/results", help="Path to the output directory.")
 # parser.add_argument("--model_name", default="microsoft/phi-4")
 # parser.add_argument("--model_name", default="Qwen/Qwen2.5-0.5B-Instruct")
-parser.add_argument("--model_name", default="Qwen/Qwen2.5-1.5B-Instruct")
+# parser.add_argument("--model_name", default="Qwen/Qwen2.5-1.5B-Instruct")
+parser.add_argument("--model_name", default="Qwen/Qwen3-1.7B")
 parser.add_argument("--max_records", default=3000, type=int)
 parser.add_argument("--eval_limit",  type=int, default=10)
 parser.add_argument("--max_length",  type=int, default=1024)
@@ -139,7 +140,7 @@ with accelerator.main_process_first():
         )
 
 # ───────── FREE large raw datasets to save RAM ─────────
-del train_raw, test_raw
+del train_raw
 gc.collect()
 
 # ───────── training setup ─────────
@@ -181,15 +182,16 @@ val_metrics = trainer.evaluate(eval_dataset=eval_tok)
 # val_metrics = compute_metrics((val_preds, np.array(labels)))
 logging.info("Validation metrics: %s", val_metrics)
 val_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, eval_tok)
-show_examples(eval_raw, val_preds, tokenizer, n=10)
+if accelerator.is_main_process:
+    show_examples(eval_raw, val_preds, tokenizer, n=10)
 
-if test_tok:
+if test_tok and test_tok is not None:
     test_metrics = trainer.evaluate(eval_dataset=test_tok)
     logging.info("Test metrics: %s", test_metrics)
 
     test_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, test_tok)
-    show_examples(eval_raw if test_raw is None else test_raw,
-                  test_preds, tokenizer, n=10)
+    if accelerator.is_main_process:
+        show_examples(test_raw, test_preds, tokenizer, n=10)
 
 trainer.save_model(str(Path(args.output_dir).expanduser()))
 logging.info("Model saved to %s", args.output_dir)

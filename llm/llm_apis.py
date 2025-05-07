@@ -7,7 +7,7 @@ import evaluate
 from datasets import Dataset
 
 
-SYSTEM_PROMPT = "You are a helpful chemistry professor. Be concise. Only provide one chemical name as the answer and place it between <|box_start|> and <|box_end|>."
+SYSTEM_PROMPT = "You are a helpful chemist. Please reason step by step, and put your final answer within \\boxed{}."
 
 # ─────────────────────────── data helper ──────────────────────────────
 def load_arrow_dataset(path: str, limit: int | None = None) -> Dataset:
@@ -23,7 +23,7 @@ def build_train_batch(tok, smiles, iupac, max_len):
         [
             {"role": "system",    "content": SYSTEM_PROMPT},
             {"role": "user",      "content": f"What is the IUPAC name for the molecule {s}?"},
-            {"role": "assistant", "content": f"<|box_start|>{i}<|box_end|>"}
+            {"role": "assistant", "content": f"\\boxed{{{i}}}"}
         ]
         for s, i in zip(smiles, iupac)
     ]
@@ -77,7 +77,7 @@ def build_eval_batch(tok, smiles, iupac,
                      max_length=max_prompt_len, return_tensors="np")
 
     # Labels: tokenize only the answer
-    ans_enc = tok([f"<|box_start|>{i}<|box_end|>" for i in iupac],
+    ans_enc = tok([f"\\boxed{{{i}}}" for i in iupac],
                   truncation=True, add_special_tokens=False,
                   max_length=max_label_len, return_tensors="np")
 
