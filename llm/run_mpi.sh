@@ -46,7 +46,7 @@ export NUM_PROCESSES=$(( SLURM_NNODES * SLURM_GPUS_ON_NODE ))
 export RDZV_CONF="rdzv_backend=c10d,rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT"
 
 # note that the machine_rank value is escaped so it will be interpreted on the node actually doing the compute
-
+# to turn on DeepSpeed: --config_file mpi_deepspeed_config.json
 export LAUNCHER="accelerate launch \
 --config_file mpi_config.json \
 --num_processes $SLURM_NNODES \
@@ -61,10 +61,10 @@ export SCRIPT="train_llm.py"
 
 export ARGS="--max_records 0                \
 --output_dir ~/results/$SLURM_JOB_ID     \
---num_train_epochs 3 \
+--num_train_epochs 1 \
 --eval_steps 1000 \
 --eval_limit 30 \
---max_records 0 \
+--max_records 10000 \
 --train_file ~/data/pubchem/arrow/cluster_6M_train.arrow \
 --eval_file ~/data/pubchem/arrow/cluster_6M_eval.arrow \
 "

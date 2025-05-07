@@ -96,6 +96,7 @@ parser.add_argument("--per_device_train_batch_size", type=int, default=4)
 parser.add_argument("--per_device_eval_batch_size",  type=int, default=4)
 parser.add_argument("--logging_steps", type=int, default=200)
 parser.add_argument("--eval_steps",    type=int, default=200)
+parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="number of steps during gradient accumulation. When using DeepSpeed, configure to use the same number of gradient accumulation step as in the DeepSpeed config")
 args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
@@ -157,7 +158,7 @@ targs = Seq2SeqTrainingArguments(
     metric_for_best_model="exact_match",
 #    tf32=True,
     bf16=True,
-    gradient_accumulation_steps=4
+    gradient_accumulation_steps=args.gradient_accumulation_steps
 )
 
 compute_metrics = compute_metrics_closure(tokenizer)
@@ -175,36 +176,18 @@ logging.info("Starting training …")
 trainer.train()
 
 logging.info("Generating validation predictions …")
-
+val_metrics = trainer.evaluate(eval_dataset=eval_tok)
+# labels = eval_tok["labels"]
+# val_metrics = compute_metrics((val_preds, np.array(labels)))
+logging.info("Validation metrics: %s", val_metrics)
 val_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, eval_tok)
 show_examples(eval_raw, val_preds, tokenizer, n=10)
-
-# manually compute metrics
-labels = eval_tok["labels"]
-val_metrics = compute_metrics((val_preds, np.array(labels)))
-logging.info("Validation metrics: %s", val_metrics)
 
 if test_tok:
     test_metrics = trainer.evaluate(eval_dataset=test_tok)
     logging.info("Test metrics: %s", test_metrics)
-    test_inputs = test_tok["input_ids"]
-    test_tok.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    test_input_ids = test_tok["input_ids"].to(model.device)
-    test_attention_mask = test_tok["attention_mask"].to(model.device)
-    # drop the final token so generation will actually happen
-    test_input_ids      = test_input_ids[:, :-1]
-    test_attention_mask = test_attention_mask[:, :-1]
-    
-    test_preds = model.generate(
-        input_ids=test_input_ids,
-        attention_mask=test_attention_mask,
-        max_new_tokens=args.max_new_tokens,
-        num_beams=args.num_beams,
-        do_sample=True,
-        top_p=0.95,
-        temperature=0.8,
-        eos_token_id=tokenizer.eos_token_id,
-    )
+
+    test_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, test_tok)
     show_examples(eval_raw if test_raw is None else test_raw,
                   test_preds, tokenizer, n=10)
 
