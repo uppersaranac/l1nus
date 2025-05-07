@@ -12,6 +12,10 @@ from transformers import (
     Trainer,
     Seq2SeqTrainingArguments,
 )
+from accelerate import Accelerator
+
+
+accelerator = Accelerator()
 
 from llm_apis import *
 
@@ -108,29 +112,30 @@ eval_raw  = load_arrow_dataset(args.eval_file, args.eval_limit or None)
 test_raw  = load_arrow_dataset(args.test_file) if args.test_file else None
 
 # ───────── tokenise datasets ─────────
-train_tok = train_raw.map(
-    lambda b: build_train_batch(tokenizer, b["smiles"], b["iupac"],
-                                args.max_length),
-    batched=True, batch_size=1000,
-    remove_columns=["smiles", "iupac"],
-    num_proc=args.map_num_proc
-)
-eval_tok = eval_raw.map(
-    lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
-                               args.max_length, args.max_label_len),
-    batched=True, batch_size=1000,
-    remove_columns=["smiles", "iupac"],
-    num_proc=args.map_num_proc
-)
-test_tok = None
-if test_raw:
-    test_tok = test_raw.map(
-        lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
-                                   args.max_length, args.max_label_len),
+with accelerator.main_process_first():
+    train_tok = train_raw.map(
+        lambda b: build_train_batch(tokenizer, b["smiles"], b["iupac"],
+                                    args.max_length),
         batched=True, batch_size=1000,
         remove_columns=["smiles", "iupac"],
         num_proc=args.map_num_proc
     )
+    eval_tok = eval_raw.map(
+        lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
+                                args.max_length, args.max_label_len),
+        batched=True, batch_size=1000,
+        remove_columns=["smiles", "iupac"],
+        num_proc=args.map_num_proc
+    )
+    test_tok = None
+    if test_raw:
+        test_tok = test_raw.map(
+            lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
+                                    args.max_length, args.max_label_len),
+            batched=True, batch_size=1000,
+            remove_columns=["smiles", "iupac"],
+            num_proc=args.map_num_proc
+        )
 
 # ───────── FREE large raw datasets to save RAM ─────────
 del train_raw, test_raw
