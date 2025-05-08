@@ -10,7 +10,9 @@ import torch
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Run LLM chatbot")
-parser.add_argument("--model_name_or_path", type=str, required=True, help="Local path or Hub model name")
+parser.add_argument("--model_name_or_path", type=str, default="Qwen/Qwen3-1.7B", help="Local path or Hub model name (default: Qwen/Qwen3-1.7B)")
+parser.add_argument("--disable_thinking", action="store_true", help="Disable model thinking mode (only works with models that support it like Qwen3)")
+parser.add_argument("--no_history", action="store_true", help="Disable conversation history (treat each question independently)")
 args = parser.parse_args()
 
 model = AutoModelForCausalLM.from_pretrained(
@@ -29,11 +31,17 @@ pipeline = transformers.pipeline(
 
 # Step 2: Define a function to interact with the chatbot
 def interact_with_chatbot(user_input, conversation_history):
-    # Step 2.1: Add user input to the conversation history
-    conversation_history.append(f"User: {user_input}")
+    # Step 2.1: Add user input to the conversation history (if history is enabled)
+    if not args.no_history:
+        conversation_history.append(f"User: {user_input}")
     
     # Step 2.2: Prepare the input text for the model
-    conversation_text = " ".join(conversation_history[-5:])  # Use only the last 5 exchanges to keep context manageable
+    if args.no_history:
+        # If history is disabled, only use the current question
+        conversation_text = user_input
+    else:
+        # Otherwise use the last 5 exchanges to keep context manageable
+        conversation_text = " ".join(conversation_history[-5:])
     
     # Step 2.3: Generate a response using the chatbot pipeline
 
@@ -41,9 +49,51 @@ def interact_with_chatbot(user_input, conversation_history):
         {"role": "system", "content": "You are a chemist that tries to answer user questions as accurately as possible. Work through problems given to you step by step. If you don't know the answer, you can say I don't know."},
         {"role": "user", "content": conversation_text},
     ]
-
-    outputs = pipeline(messages, max_new_tokens=1024)
-    response_text = outputs[0]["generated_text"][-1]
+    
+    # For models that support the enable_thinking parameter (like Qwen3)
+    # We need to check if the tokenizer has the apply_chat_template method and if it accepts enable_thinking
+    if hasattr(tokenizer, 'apply_chat_template') and 'enable_thinking' in tokenizer.apply_chat_template.__code__.co_varnames:
+        # Apply chat template with thinking mode controlled by command-line argument
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=not args.disable_thinking  # Disable thinking if --disable_thinking is set
+        )
+        model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+        
+        # Generate response
+        generated_ids = model.generate(
+            **model_inputs,
+            max_new_tokens=1024
+        )
+        output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
+        
+        # Parse thinking content if present
+        try:
+            # Try to find </think> token (specific to Qwen3 models)
+            # The actual token ID may vary depending on the model
+            think_end_tokens = [tokenizer.encode("</think>")[-1]]
+            for token in think_end_tokens:
+                if token in output_ids:
+                    index = len(output_ids) - output_ids[::-1].index(token)
+                    break
+            else:
+                index = 0
+        except (ValueError, IndexError):
+            index = 0
+        
+        # Get the final response (after thinking content if present)
+        response_text = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+        
+        # Optionally print thinking content for debugging
+        if index > 0 and not args.disable_thinking:
+            thinking_content = tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
+            print("Model thinking process:", thinking_content)
+    else:
+        # Fallback to standard pipeline for models that don't support enable_thinking
+        outputs = pipeline(messages, max_new_tokens=1024)
+        response_text = outputs[0]["generated_text"][-1]
     
     return response_text
 

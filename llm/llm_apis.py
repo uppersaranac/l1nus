@@ -1,19 +1,21 @@
 #!/usr/bin/env python
 from __future__ import annotations
 from pathlib import Path
+import random
 
 import numpy as np
 import evaluate
 from datasets import Dataset
 
 
-SYSTEM_PROMPT = "You are a helpful chemist. Please reason step by step, and put your final answer within \\boxed{}."
+SYSTEM_PROMPT = "Do not think and put the answer in \boxed{}."
 
 # ─────────────────────────── data helper ──────────────────────────────
 def load_arrow_dataset(path: str, limit: int | None = None) -> Dataset:
     ds = Dataset.from_file(str(Path(path).expanduser()))
     if limit and limit > 0 and len(ds) > limit:
-        ds = ds.select(range(limit))
+        ds = ds.select(random.sample(range(len(ds)), limit))
+        # ds = ds.select(range(limit))
     return ds
 
 
@@ -22,13 +24,13 @@ def build_train_batch(tok, smiles, iupac, max_len):
     msgs = [
         [
             {"role": "system",    "content": SYSTEM_PROMPT},
-            {"role": "user",      "content": f"What is the IUPAC name for the molecule {s}?"},
-            {"role": "assistant", "content": f"\\boxed{{{i}}}"}
+            {"role": "user",      "content": f"Use the IUPAC naming rules to name the molecule {s}."},
+            {"role": "assistant", "content": f"The correct IUPAC name for this structure is\\boxed{{\\text{{{i}}}}}."}
         ]
         for s, i in zip(smiles, iupac)
     ]
     # Step 1: Get prompt strings
-    prompts = [tok.apply_chat_template(m, tokenize=False) for m in msgs]
+    prompts = [tok.apply_chat_template(m, tokenize=False, add_generation_prompt=True, enable_thinking=False) for m in msgs]
 
     # Step 2: Tokenize prompts
     enc = tok(prompts, padding="max_length", truncation=True,
@@ -63,13 +65,13 @@ def build_eval_batch(tok, smiles, iupac,
     user_msgs = [
         [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": f"What is the IUPAC name for the molecule {s}?"}
+            {"role": "user",   "content": f"Use the IUPAC naming rules to name the molecule {s}."}
         ]
         for s in smiles
     ]
 
     # Step 1: Prompt strings
-    prompts = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False)
+    prompts = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False,enable_thinking=False)
                for m in user_msgs]
 
     # Step 2: Tokenize prompts
@@ -77,7 +79,7 @@ def build_eval_batch(tok, smiles, iupac,
                      max_length=max_prompt_len, return_tensors="np")
 
     # Labels: tokenize only the answer
-    ans_enc = tok([f"\\boxed{{{i}}}" for i in iupac],
+    ans_enc = tok([f"The correct IUPAC name for this structure is \\boxed{{\\text{{{i}}}}}" for i in iupac],
                   truncation=True, add_special_tokens=False,
                   max_length=max_label_len, return_tensors="np")
 
