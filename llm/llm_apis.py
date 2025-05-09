@@ -8,7 +8,7 @@ import evaluate
 from datasets import Dataset
 
 
-SYSTEM_PROMPT = "Do not think and put the answer in \boxed{}."
+SYSTEM_PROMPT = "Do not think and put the answer in \\boxed{}."
 
 # ─────────────────────────── data helper ──────────────────────────────
 def load_arrow_dataset(path: str, limit: int | None = None) -> Dataset:
@@ -146,7 +146,14 @@ def show_examples(raw_ds, preds, tok, n=10):
     for i in range(0, len(raw_ds), len(raw_ds)//n):
         q = f"What is the IUPAC name for the molecule {raw_ds[i]['smiles']}?"
         gt = f"It is {raw_ds[i]['iupac']}"
-        pd = tok.decode(preds[i], skip_special_tokens=True).strip()
+        
+        # Decode the prediction
+        pd = tok.decode(preds[i])
+        
+        # Collapse consecutive <|im_end|> tokens into a single token
+        import re
+        pd = re.sub(r'(<\|im_end\|>\s*)+', '<|im_end|> ', pd)
+        
         print(f"\n#{i}")
         print("Q :", q)
         print("GT:", gt)

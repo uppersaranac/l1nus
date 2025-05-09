@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J train_llm_mpi           # Job name
 #SBATCH -t 36:00:00              # Wall time (1 hour)
-#SBATCH -N 4                    # Number of nodes
+#SBATCH -N 2                    # Number of nodes
 #SBATCH -p gh                    # GPU partition (modify as needed)
 #SBATCH --mail-user=lewis.geer@gmail.com
 #SBATCH --mail-type=all
@@ -21,6 +21,9 @@ source ~/source/l1nus/llm/.venv/bin/activate
 # export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 # export NCCL_DEBUG=INFO
 # export NCCL_SOCKET_IFNAME=ib0
+
+# to reduce memory usage
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # see https://github.com/shaneholloman/smollm/blob/542250b39015654d47083245bfb4c03332643bd6/vision/experiments/evaluation/vloom/common/run_cron_evals_multi_task_cluster.slurm
 # Accelerate will detect MASTER_ADDR/PORT automatically if they exist;
@@ -59,7 +62,7 @@ export LAUNCHER="accelerate launch \
 
 export SCRIPT="train_llm.py"
 
-export ARGS="--max_records 5000 \
+export ARGS="--max_records 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
 --num_train_epochs 5 \
 --eval_steps 2000 \
