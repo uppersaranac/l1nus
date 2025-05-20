@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from __future__ import annotations
-import argparse, logging, gc
+import argparse, logging, gc, sys
 from pathlib import Path
 import os
 
@@ -14,10 +14,34 @@ from transformers import (
 )
 from accelerate import Accelerator
 
+# Import rdkit for molecular property calculations
+from rdkit import Chem
+from rdkit.Chem import rdMolDescriptors
+from typing import Any, Sequence, Dict
 
 accelerator = Accelerator()
 
-from llm_apis import *
+from llm_apis import (
+    calculate_molecular_properties,
+    count_heavy_atoms,
+    count_non_hydrogen_bonds,
+    count_positive_formal_charge_atoms,
+    count_negative_formal_charge_atoms,
+    QuestionSetProcessor,
+    IUPACNamingProcessor,
+    MolecularPropertiesProcessor,
+    AllPropertiesProcessor,
+    load_arrow_dataset,
+    build_train_batch,
+    build_eval_batch,
+    _norm,
+    compute_metrics_closure,
+    show_examples,
+    do_generation,
+    QUESTION_SETS,
+    PROCESSOR_CLASSES,
+)
+from typing import Any, Sequence, Dict
 
 """
 property_schema_fields = [
@@ -98,6 +122,9 @@ parser.add_argument("--per_device_eval_batch_size",  type=int, default=4)
 parser.add_argument("--logging_steps", type=int, default=200)
 parser.add_argument("--eval_steps",    type=int, default=200)
 parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="number of steps during gradient accumulation. When using DeepSpeed, configure to use the same number of gradient accumulation step as in the DeepSpeed config")
+parser.add_argument("--question_set", type=str, default="iupac_naming", choices=["iupac_naming", "molecular_properties", "all_properties"],
+                    help="Type of question set to use for training")
+parser.add_argument("--show_examples", action="store_true", help="Show example questions and answers and exit before training.")
 args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
@@ -108,32 +135,50 @@ tokenizer.pad_token = tokenizer.eos_token
 model = AutoModelForCausalLM.from_pretrained(args.model_name,
                                              torch_dtype=torch.bfloat16)
 
+try:
+    processor = PROCESSOR_CLASSES[args.question_set]()
+except KeyError:
+    raise ValueError(f"Unknown question set: {args.question_set}")
+
 # ───────── load raw datasets ─────────
 train_raw = load_arrow_dataset(args.train_file, args.max_records)
 eval_raw  = load_arrow_dataset(args.eval_file, args.eval_limit or None)
 test_raw  = load_arrow_dataset(args.test_file) if args.test_file else None
 
+# Register a mode to display example Q&A without training
+if args.show_examples:
+    logging.info("Showing example questions and answers")
+    processor.show_examples(eval_raw, tokenizer, args.eval_limit)
+    sys.exit(0)
+
 # ───────── tokenise datasets ─────────
 with accelerator.main_process_first():
+    # Prepare answers using QuestionSetProcessor
+    train_answers = processor.prepare_answers(train_raw)
+    eval_answers = processor.prepare_answers(eval_raw)
+    test_answers = processor.prepare_answers(test_raw) if test_raw else None
+
     train_tok = train_raw.map(
-        lambda b: build_train_batch(tokenizer, b["smiles"], b["iupac"],
-                                    args.max_length),
+        lambda b: build_train_batch(tokenizer, b["smiles"], train_answers,
+                                    args.max_length, question_set_name=args.question_set),
         batched=True, batch_size=1000,
         remove_columns=["smiles", "iupac"],
         num_proc=args.map_num_proc
     )
+    
     eval_tok = eval_raw.map(
-        lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
-                                args.max_length, args.max_label_len),
+        lambda b: build_eval_batch(tokenizer, b["smiles"], eval_answers,
+                                args.max_length, args.max_label_len, question_set_name=args.question_set),
         batched=True, batch_size=1000,
         remove_columns=["smiles", "iupac"],
         num_proc=args.map_num_proc
     )
+    
     test_tok = None
     if test_raw:
         test_tok = test_raw.map(
-            lambda b: build_eval_batch(tokenizer, b["smiles"], b["iupac"],
-                                    args.max_length, args.max_label_len),
+            lambda b: build_eval_batch(tokenizer, b["smiles"], test_answers,
+                                    args.max_length, args.max_label_len, question_set_name=args.question_set),
             batched=True, batch_size=1000,
             remove_columns=["smiles", "iupac"],
             num_proc=args.map_num_proc
