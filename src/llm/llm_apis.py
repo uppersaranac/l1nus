@@ -142,6 +142,9 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
     def prepare_answers(self, ds: Any) -> Dict[str, Sequence[Any]]:
         answers = calculate_molecular_properties(ds["smiles"])
         answers["iupac_name"] = ds["iupac"]
+        # Ensure all answers are lists of strings
+        for k in answers:
+            answers[k] = [str(x) for x in answers[k]]
         return answers
     def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
         ans = answers[q["id"]][i]
@@ -156,6 +159,9 @@ class AllPropertiesProcessor(QuestionSetProcessor):
     def prepare_answers(self, ds: Any) -> Dict[str, Sequence[Any]]:
         answers = calculate_molecular_properties(ds["smiles"])
         answers["iupac_name"] = ds["iupac"]
+        # Ensure all answers are lists of strings
+        for k in answers:
+            answers[k] = [str(x) for x in answers[k]]
         return answers
     def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
         """
