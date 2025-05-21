@@ -143,8 +143,11 @@ def test_compute_metrics_closure_exact_match(tokenizer):
     assert result["exact_match"] == 1.0
 
 def test_do_generation_mock(tokenizer):
-    dummy_input_ids = torch.full((2, 10), tokenizer.pad_token_id)
-    dummy_attention_mask = torch.ones_like(dummy_input_ids)
+    # Tokenize two simple mock prompts
+    texts = ["CCO", "CC(=O)O"]
+    encodings = tokenizer(texts, padding='max_length', max_length=10, return_tensors='pt')
+    dummy_input_ids = encodings['input_ids']
+    dummy_attention_mask = encodings['attention_mask']
 
     class DummyDataset:
         def set_format(self, type=None, columns=None):
@@ -162,6 +165,9 @@ def test_do_generation_mock(tokenizer):
     preds = do_generation(num_beams=1, max_new_tokens=5,
                           tokenizer=tokenizer, model=model,
                           data=DummyDataset())
-    assert isinstance(preds, torch.Tensor)
-    assert preds.shape == (2, 3)
+    import numpy as np
+    assert isinstance(preds, np.ndarray)
+    assert preds.shape[0] == 2
+    assert preds.ndim == 2
+    assert preds.dtype == np.int64
     model.generate.assert_called_once()
