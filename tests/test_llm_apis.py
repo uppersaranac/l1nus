@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from unittest.mock import MagicMock
 from transformers import AutoTokenizer
-from llm_apis import (
+from llm.llm_apis import (
     build_train_batch, build_eval_batch, _norm, compute_metrics_closure, do_generation,
     count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
     calculate_molecular_properties,

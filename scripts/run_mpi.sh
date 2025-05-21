@@ -60,7 +60,7 @@ export LAUNCHER="accelerate launch \
 --main_process_port $MASTER_PORT \
 "
 
-export SCRIPT="train_llm.py"
+export SCRIPT="../src/llm/train_llm.py"
 
 export ARGS="--max_records 0 \
 --output_dir ~/results/$SLURM_JOB_ID \

@@ -21,7 +21,7 @@ from typing import Any, Sequence, Dict
 
 accelerator = Accelerator()
 
-from llm_apis import (
+from llm.llm_apis import (
     calculate_molecular_properties,
     count_heavy_atoms,
     count_non_hydrogen_bonds,

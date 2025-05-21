@@ -52,7 +52,7 @@ export RDZV_CONF="rdzv_backend=c10d,rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT"
 # to turn on DeepSpeed: --config_file mpi_deepspeed_config.json
 export LAUNCHER="python"
 
-export SCRIPT="train_llm.py"
+export SCRIPT="../src/llm/train_llm.py"
 
 export ARGS="--max_records 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
