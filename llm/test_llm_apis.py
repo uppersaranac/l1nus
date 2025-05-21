@@ -135,6 +135,41 @@ def test_all_properties_processor():
         assert str(answers["carbon_count"][i]) in formatted
         assert ds["iupac"][i] in formatted
 
+
+def test_processors_edge_cases():
+    # Edge case 1: Empty input
+    ds_empty = {"smiles": [], "iupac": []}
+    for Processor in [IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor]:
+        proc = Processor()
+        answers = proc.prepare_answers(ds_empty)
+        # All returned lists should be empty
+        for v in answers.values():
+            assert v == []
+
+    # Edge case 2: Invalid SMILES
+    ds_invalid = {"smiles": ["", "not_a_smiles"], "iupac": ["", "invalid"]}
+    # Should not raise, and should return zero/empty/placeholder values
+    for Processor in [MolecularPropertiesProcessor, AllPropertiesProcessor]:
+        proc = Processor()
+        answers = proc.prepare_answers(ds_invalid)
+        # All property lists should have correct length and handle invalid gracefully
+        for v in answers.values():
+            assert len(v) == 2
+    # IUPACNamingProcessor just returns the iupac field
+    proc = IUPACNamingProcessor()
+    answers = proc.prepare_answers(ds_invalid)
+    assert answers["iupac_name"] == ["", "invalid"]
+
+    # Edge case 3: Mismatched lengths
+    ds_mismatch = {"smiles": ["CCO"], "iupac": ["ethanol", "extra"]}
+    for Processor in [IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor]:
+        proc = Processor()
+        try:
+            answers = proc.prepare_answers(ds_mismatch)
+        except Exception as e:
+            # Should raise a clear error or handle gracefully
+            assert isinstance(e, (IndexError, ValueError, AssertionError))
+
 def test_molecular_properties_processor():
     ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
     proc = MolecularPropertiesProcessor()
