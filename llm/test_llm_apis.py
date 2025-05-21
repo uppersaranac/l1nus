@@ -3,7 +3,13 @@ import numpy as np
 import torch
 from unittest.mock import MagicMock
 from transformers import AutoTokenizer
-from llm_apis import build_train_batch, build_eval_batch, _norm, compute_metrics_closure, do_generation
+from llm_apis import (
+    build_train_batch, build_eval_batch, _norm, compute_metrics_closure, do_generation,
+    count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
+    calculate_molecular_properties,
+    QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor,
+    QUESTION_SETS
+)
 
 @pytest.fixture(scope="module")
 def tokenizer():
@@ -19,7 +25,9 @@ def toy_data():
 def test_build_train_batch(tokenizer, toy_data):
     smiles, iupac = toy_data
     max_len = 32
-    batch = build_train_batch(tokenizer, smiles, iupac, max_len=max_len)
+    processor = IUPACNamingProcessor()
+    answers = processor.prepare_answers({"smiles": smiles, "iupac": iupac})
+    batch = build_train_batch(tokenizer, smiles, answers, max_len=max_len)
 
     input_ids = batch["input_ids"]
     labels = batch["labels"]
@@ -39,7 +47,9 @@ def test_build_eval_batch(tokenizer, toy_data):
     smiles, iupac = toy_data
     max_prompt_len = 32
     max_label_len = 16
-    batch = build_eval_batch(tokenizer, smiles, iupac, max_prompt_len, max_label_len)
+    processor = IUPACNamingProcessor()
+    answers = processor.prepare_answers({"smiles": smiles, "iupac": iupac})
+    batch = build_eval_batch(tokenizer, smiles, answers, max_prompt_len, max_label_len)
 
     input_ids = batch["input_ids"]
     labels = batch["labels"]
@@ -53,9 +63,75 @@ def test_build_eval_batch(tokenizer, toy_data):
         assert any(tok != -100 for tok in label[max_prompt_len - max_label_len:])
 
 def test_norm():
-    assert _norm("It is ethanol.") == "ethanol"
-    assert _norm(" ethanol ") == "ethanol"
-    assert _norm("It is acetic acid") == "acetic acid"
+    assert _norm("It is <result>ethanol</result>") == "ethanol"
+    assert _norm(" <result>ethanol</result> ") == "ethanol"
+    assert _norm("It is \\boxed{3}") == "3"
+
+def test_count_heavy_atoms():
+    assert count_heavy_atoms("CCO") == 3  # ethanol: 2C, 1O
+    assert count_heavy_atoms("[NH4+]") == 1
+    assert count_heavy_atoms("") == 0
+
+def test_count_non_hydrogen_bonds():
+    assert count_non_hydrogen_bonds("CCO") == 2  # C-C and C-O
+    assert count_non_hydrogen_bonds("C") == 0
+    assert count_non_hydrogen_bonds("") == 0
+
+def test_count_positive_formal_charge_atoms():
+    assert count_positive_formal_charge_atoms("[NH4+]") == 1
+    assert count_positive_formal_charge_atoms("CCO") == 0
+    assert count_positive_formal_charge_atoms("") == 0
+
+def test_count_negative_formal_charge_atoms():
+    assert count_negative_formal_charge_atoms("[O-][N+](=O)O") == 1  # nitrite anion
+    assert count_negative_formal_charge_atoms("CCO") == 0
+    assert count_negative_formal_charge_atoms("") == 0
+
+def test_calculate_molecular_properties():
+    smiles = ["CCO", "[NH4+]"]
+    props = calculate_molecular_properties(smiles)
+    assert props["heavy_atom_count"] == [3, 1]
+    assert props["non_hydrogen_bond_count"] == [2, 0]
+    assert props["positive_formal_charge_count"] == [0, 1]
+    assert props["negative_formal_charge_count"] == [0, 0]
+    assert props["carbon_count"] == [2, 0]
+    assert props["oxygen_count"] == [1, 0]
+
+def test_iupac_naming_processor():
+    ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
+    proc = IUPACNamingProcessor()
+    answers = proc.prepare_answers(ds)
+    assert answers == {"iupac_name": ["ethanol"]}
+    q = QUESTION_SETS["iupac_naming"]["questions"][0]
+    formatted = proc.format_answer(q, answers, 0, "CCO")
+    assert "ethanol" in formatted
+
+def test_molecular_properties_processor():
+    ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
+    proc = MolecularPropertiesProcessor()
+    answers = proc.prepare_answers(ds)
+    assert answers["carbon_count"][0] == 2
+    q = QUESTION_SETS["molecular_properties"]["questions"][0]
+    formatted = proc.format_answer(q, answers, 0, "CCO")
+    assert str(answers[q["id"]][0]) in formatted
+
+def test_all_properties_processor():
+    ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
+    proc = AllPropertiesProcessor()
+    answers = proc.prepare_answers(ds)
+    q = QUESTION_SETS["all_properties"]["questions"][0]
+    formatted = proc.format_answer(q, answers, 0, "CCO")
+    assert "Molecular Analysis" in formatted
+    assert str(answers["carbon_count"][0]) in formatted
+
+def test_question_set_processor_not_implemented():
+    class Dummy(QuestionSetProcessor):
+        pass
+    dummy = Dummy("iupac_naming")
+    with pytest.raises(NotImplementedError):
+        dummy.prepare_answers({})
+    with pytest.raises(NotImplementedError):
+        dummy.format_answer({}, {}, 0, "CCO")
 
 def test_compute_metrics_closure_exact_match(tokenizer):
     compute_metrics = compute_metrics_closure(tokenizer)

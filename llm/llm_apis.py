@@ -7,6 +7,7 @@ from typing import Any, Sequence, Dict, Optional, Callable
 import numpy as np
 import evaluate
 from datasets import Dataset
+import torch
 
 # Import rdkit for molecular property calculations
 from rdkit import Chem
