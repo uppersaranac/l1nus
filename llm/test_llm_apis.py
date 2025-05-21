@@ -98,13 +98,42 @@ def test_calculate_molecular_properties():
     assert props["oxygen_count"] == [1, 0]
 
 def test_iupac_naming_processor():
-    ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
+    ds = {"smiles": ["CCO", "CC(=O)O"], "iupac": ["ethanol", "acetic acid"]}
     proc = IUPACNamingProcessor()
     answers = proc.prepare_answers(ds)
-    assert answers == {"iupac_name": ["ethanol"]}
+    assert answers == {"iupac_name": ["ethanol", "acetic acid"]}
     q = QUESTION_SETS["iupac_naming"]["questions"][0]
-    formatted = proc.format_answer(q, answers, 0, "CCO")
-    assert "ethanol" in formatted
+    for i, smile in enumerate(ds["smiles"]):
+        formatted = proc.format_answer(q, answers, i, smile)
+        assert ds["iupac"][i] in formatted
+
+
+def test_molecular_properties_processor():
+    ds = {"smiles": ["CCO", "CC(=O)O"], "iupac": ["ethanol", "acetic acid"]}
+    proc = MolecularPropertiesProcessor()
+    answers = proc.prepare_answers(ds)
+    # Check a few key properties for both molecules
+    assert answers["carbon_count"] == [2, 2]
+    assert answers["oxygen_count"] == [1, 2]
+    assert answers["iupac_name"] == ["ethanol", "acetic acid"]
+    q = QUESTION_SETS["molecular_properties"]["questions"][0]
+    for i, smile in enumerate(ds["smiles"]):
+        formatted = proc.format_answer(q, answers, i, smile)
+        # Should contain the correct answer for each molecule
+        assert str(answers[q["id"]][i]) in formatted
+
+
+def test_all_properties_processor():
+    ds = {"smiles": ["CCO", "CC(=O)O"], "iupac": ["ethanol", "acetic acid"]}
+    proc = AllPropertiesProcessor()
+    answers = proc.prepare_answers(ds)
+    q = QUESTION_SETS["all_properties"]["questions"][0]
+    for i, smile in enumerate(ds["smiles"]):
+        formatted = proc.format_answer(q, answers, i, smile)
+        # Should include the assistant template's header and at least one property value
+        assert "Molecular Analysis" in formatted
+        assert str(answers["carbon_count"][i]) in formatted
+        assert ds["iupac"][i] in formatted
 
 def test_molecular_properties_processor():
     ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
