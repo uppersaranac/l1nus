@@ -558,133 +558,82 @@ def load_arrow_dataset(path: str, limit: Optional[int] = None) -> Dataset:
 
 
 # ───────────────────────── tokenisation helpers ───────────────────────
-def build_train_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequence[str]], max_len: int, question_set_name: str = "iupac_naming") -> Dict[str, Any]:
-    """
-    Build a training batch for a specific question set.
-
-    :param tok: The tokenizer.
-    :param smiles: List of SMILES strings.
-    :param answers: Dictionary mapping question ids to lists of answers.
-    :param max_len: Maximum sequence length.
-    :param question_set_name: The name of the question set to use.
-    :return: Encoded batch with input_ids, attention_mask, and labels.
-    """
-    question_set = QUESTION_SETS[question_set_name]
-    msgs = []
-    
-    for i, s in enumerate(smiles):
-        for question in question_set["questions"]:
-            qid = question["id"]
-            if qid in answers and i < len(answers[qid]):
-                a = answers[qid][i]
-                msgs.append([
-                    {"role": "system", "content": question_set["system_prompt"]},
-                    {"role": "user", "content": question["user_template"].format(smiles=s)},
-                    {"role": "assistant", "content": question["assistant_template"].format(answer=a)}
-                ])
-    
-    # Get prompt strings
-    prompts = [tok.apply_chat_template(m, tokenize=False, add_generation_prompt=True, enable_thinking=False) for m in msgs]
-    
-    # Tokenize prompts
-    enc = tok(prompts, padding="max_length", truncation=True,
-              max_length=max_len, return_tensors="np")
-    
-    # Extract all answers for label creation
-    all_answers = []
-    for i, s in enumerate(smiles):
-        for question in question_set["questions"]:
-            qid = question["id"]
-            if qid in answers and i < len(answers[qid]):
-                all_answers.append(answers[qid][i])
-    
-    # Prepare answer token IDs without special tokens
-    answers_ids = [tok(text, add_special_tokens=False)["input_ids"] for text in all_answers]
-    input_ids_list = enc["input_ids"].tolist()
-    
-    labels_full = []
-    for idx, (row_ids, ans_ids) in enumerate(zip(input_ids_list, answers_ids)):
-        # Find the start index of the answer tokens within the input_ids sequence
-        start_idx = -1
-        for i in range(len(row_ids) - len(ans_ids) + 1):
-            if row_ids[i : i + len(ans_ids)] == ans_ids[:len(row_ids)-i]:
-                start_idx = i
-                break
-                
-        label = [-100] * len(row_ids)
-        if start_idx >= 0:
-            # Build label row: mask (-100) everywhere except the answer span
-            for j, tok_id in enumerate(ans_ids):
-                label[start_idx + j] = tok_id
-        else:
-            print(f"Warning: Answer not found in input_ids for example {idx}")
-            
-        labels_full.append(label)
-    
-    enc["labels"] = labels_full
-    return enc
-
-
-def build_eval_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequence[str]], max_prompt_len: int, max_label_len: int, question_set_name: str = "iupac_naming") -> Dict[str, Any]:
-    """
-    Build an evaluation batch for a specific question set.
-
-    :param tok: The tokenizer.
-    :param smiles: List of SMILES strings.
-    :param answers: Dictionary mapping question ids to lists of answers.
-    :param max_prompt_len: Maximum prompt length.
-    :param max_label_len: Maximum label length.
-    :param question_set_name: The name of the question set to use.
-    :return: Encoded batch with input_ids, attention_mask, and labels.
-    """
-    question_set = QUESTION_SETS[question_set_name]
-    user_msgs = []
-    
-    for i, s in enumerate(smiles):
-        for question in question_set["questions"]:
-            qid = question["id"]
-            if qid in answers and i < len(answers[qid]):
-                user_msgs.append([
-                    {"role": "system", "content": question_set["system_prompt"]},
-                    {"role": "user", "content": question["user_template"].format(smiles=s)}
-                ])
-    
-    # Prompt strings
-    prompts = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False, enable_thinking=False)
-               for m in user_msgs]
-    
-    # Tokenize prompts
-    prompt_enc = tok(prompts, padding="max_length", truncation=True,
-                     max_length=max_prompt_len, return_tensors="np")
-    
-    # Extract all answers for label creation
+def _build_prompts_and_answers(smiles, answers, question_set, is_train=True):
+    prompts = []
     all_answers = []
     all_templates = []
     for i, s in enumerate(smiles):
         for question in question_set["questions"]:
             qid = question["id"]
             if qid in answers and i < len(answers[qid]):
-                all_answers.append(answers[qid][i])
-                all_templates.append(question["assistant_template"])
-    
-    # Labels: tokenize only the answers
-    formatted_answers = [template.format(answer=a) for template, a in zip(all_templates, all_answers)]
-    ans_enc = tok(formatted_answers, truncation=True, add_special_tokens=False,
-                  max_length=max_label_len, return_tensors="np")
-    
-    # Build labels matching the full sequence length, ignoring prompt tokens
-    answers = ans_enc["input_ids"].tolist()
-    labels_full = []
-    for answer in answers:
-        # Initialize all positions to ignore_index (-100)
-        label = [-100] * max_prompt_len
-        # Right-align the answer tokens at the end of the sequence
-        offset = max_prompt_len - len(answer)
-        label[offset:] = answer
-        labels_full.append(label)
-        
-    prompt_enc["labels"] = labels_full
-    return prompt_enc
+                if is_train:
+                    a = answers[qid][i]
+                    prompts.append([
+                        {"role": "system", "content": question_set["system_prompt"]},
+                        {"role": "user", "content": question["user_template"].format(smiles=s)},
+                        {"role": "assistant", "content": question["assistant_template"].format(answer=a)}
+                    ])
+                    all_answers.append(a)
+                else:
+                    prompts.append([
+                        {"role": "system", "content": question_set["system_prompt"]},
+                        {"role": "user", "content": question["user_template"].format(smiles=s)}
+                    ])
+                    all_answers.append(answers[qid][i])
+                    all_templates.append(question["assistant_template"])
+    return prompts, all_answers, all_templates
+
+def build_train_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequence[str]], max_len: int, question_set_name: str = "iupac_naming") -> Dict[str, Any]:
+    """
+    Build a training batch for a specific question set.
+    """
+    question_set = QUESTION_SETS[question_set_name]
+    prompts, all_answers, all_templates = _build_prompts_and_answers(smiles, answers, question_set, is_train=True)
+    return _build_batch(tok, prompts, all_answers, all_templates, max_len, max_len, is_train=True)
+
+def _build_batch(tok, prompts, all_answers, all_templates, max_prompt_len, max_label_len, is_train):
+    prompt_strs = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False, enable_thinking=False) for m in prompts]
+    prompt_enc = tok(prompt_strs, padding="max_length", truncation=True, max_length=max_prompt_len, return_tensors="np")
+    if is_train:
+        # Training: label is answer span in prompt
+        answers_ids = [tok(str(text), add_special_tokens=False)["input_ids"] for text in all_answers]
+        input_ids_list = prompt_enc["input_ids"].tolist()
+        labels_full = []
+        for idx, (row_ids, ans_ids) in enumerate(zip(input_ids_list, answers_ids)):
+            start_idx = -1
+            for i in range(len(row_ids) - len(ans_ids) + 1):
+                if row_ids[i : i + len(ans_ids)] == ans_ids[:len(row_ids)-i]:
+                    start_idx = i
+                    break
+            label = [-100] * len(row_ids)
+            if start_idx >= 0:
+                for j, tok_id in enumerate(ans_ids):
+                    label[start_idx + j] = tok_id
+            else:
+                print(f"Warning: Answer not found in input_ids for example {idx}")
+            labels_full.append(label)
+        prompt_enc["labels"] = labels_full
+        return prompt_enc
+    else:
+        # Eval: label is right-aligned answer tokens
+        formatted_answers = [template.format(answer=a) for template, a in zip(all_templates, all_answers)]
+        ans_enc = tok(formatted_answers, truncation=True, add_special_tokens=False, max_length=max_label_len, return_tensors="np")
+        answers = ans_enc["input_ids"].tolist()
+        labels_full = []
+        for answer in answers:
+            label = [-100] * max_prompt_len
+            label[-len(answer):] = answer[-max_prompt_len:]
+            labels_full.append(label)
+        prompt_enc["labels"] = labels_full
+        return prompt_enc
+
+def build_eval_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequence[str]], max_prompt_len: int, max_label_len: int, question_set_name: str = "iupac_naming") -> Dict[str, Any]:
+    """
+    Build an evaluation batch for a specific question set.
+    """
+    question_set = QUESTION_SETS[question_set_name]
+    prompts, all_answers, all_templates = _build_prompts_and_answers(smiles, answers, question_set, is_train=False)
+    return _build_batch(tok, prompts, all_answers, all_templates, max_prompt_len, max_label_len, is_train=False)
 
 
 # ─────────────────────────── metrics & helpers ────────────────────────

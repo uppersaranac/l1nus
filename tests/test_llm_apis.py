@@ -174,7 +174,7 @@ def test_molecular_properties_processor():
     ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
     proc = MolecularPropertiesProcessor()
     answers = proc.prepare_answers(ds)
-    assert answers["carbon_count"][0] == 2
+    assert answers["carbon_count"][0] == '2'
     q = QUESTION_SETS["molecular_properties"]["questions"][0]
     formatted = proc.format_answer(q, answers, 0, "CCO")
     assert str(answers[q["id"]][0]) in formatted
