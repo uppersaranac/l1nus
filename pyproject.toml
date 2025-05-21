@@ -8,3 +8,9 @@ version = "0.1.0"
 description = "Standardized Python project for l1nus"
 readme = "README.md"
 requires-python = ">=3.8"
+dependencies = [
+    "accelerate",
+    "transformers",
+    "evaluate",  
+]
+    
