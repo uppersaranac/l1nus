@@ -34,6 +34,7 @@ from llm.llm_apis import (
     load_arrow_dataset,
     build_train_batch,
     build_eval_batch,
+    process_single_qa,
     _norm,
     compute_metrics_closure,
     show_examples,
@@ -125,6 +126,8 @@ parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="
 parser.add_argument("--question_set", type=str, default="iupac_naming", choices=["iupac_naming", "molecular_properties", "all_properties"],
                     help="Type of question set to use for training")
 parser.add_argument("--show_examples", action="store_true", help="Show example questions and answers and exit before training.")
+parser.add_argument("--model_dtype", type=str, default="bfloat16", choices=["float16", "bfloat16", "float32"], 
+                    help="Model precision, use float16 for Apple Silicon")
 args = parser.parse_args()
 
 logging.basicConfig(level=logging.INFO)
@@ -133,7 +136,8 @@ tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 tokenizer.padding_side = "left"
 tokenizer.pad_token = tokenizer.eos_token
 model = AutoModelForCausalLM.from_pretrained(args.model_name,
-                                             torch_dtype=torch.bfloat16)
+                                             torch_dtype=getattr(torch, args.model_dtype))
+
 
 try:
     processor = PROCESSOR_CLASSES[args.question_set]()
@@ -158,34 +162,57 @@ with accelerator.main_process_first():
     eval_answers = processor.prepare_answers(eval_raw)
     test_answers = processor.prepare_answers(test_raw) if test_raw else None
 
-    train_tok = train_raw.map(
-        lambda b: build_train_batch(tokenizer, b["smiles"], train_answers,
-                                    args.max_length, question_set_name=args.question_set),
-        batched=True, batch_size=1000,
-        remove_columns=["smiles", "iupac"],
-        num_proc=args.map_num_proc
+    # Expand datasets to include all Q&A pairs
+    logging.info("Expanding training dataset to include all Q&A pairs")
+    expanded_train = processor.expand_dataset(train_raw, train_answers)
+    logging.info(f"Expanded training dataset from {len(train_raw)} to {len(expanded_train)} examples")
+    
+    logging.info("Expanding evaluation dataset to include all Q&A pairs")
+    expanded_eval = processor.expand_dataset(eval_raw, eval_answers)
+    logging.info(f"Expanded evaluation dataset from {len(eval_raw)} to {len(expanded_eval)} examples")
+    
+    expanded_test = None
+    if test_raw:
+        logging.info("Expanding test dataset to include all Q&A pairs")
+        expanded_test = processor.expand_dataset(test_raw, test_answers)
+        logging.info(f"Expanded test dataset from {len(test_raw)} to {len(expanded_test)} examples")
+
+    # Process each Q&A pair
+    train_tok = expanded_train.map(
+        lambda example: process_single_qa(
+            tokenizer, example, args.max_length, is_train=True
+        ),
+        batched=False,
+        num_proc=args.map_num_proc,
+        remove_columns=["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"]
     )
     
-    eval_tok = eval_raw.map(
-        lambda b: build_eval_batch(tokenizer, b["smiles"], eval_answers,
-                                args.max_length, args.max_label_len, question_set_name=args.question_set),
-        batched=True, batch_size=1000,
-        remove_columns=["smiles", "iupac"],
-        num_proc=args.map_num_proc
+    eval_tok = expanded_eval.map(
+        lambda example: process_single_qa(
+            tokenizer, example, args.max_length, max_label_len=args.max_label_len, is_train=False
+        ),
+        batched=False,
+        num_proc=args.map_num_proc,
+        remove_columns=["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"]
     )
     
     test_tok = None
-    if test_raw:
-        test_tok = test_raw.map(
-            lambda b: build_eval_batch(tokenizer, b["smiles"], test_answers,
-                                    args.max_length, args.max_label_len, question_set_name=args.question_set),
-            batched=True, batch_size=1000,
-            remove_columns=["smiles", "iupac"],
-            num_proc=args.map_num_proc
+    if expanded_test:
+        test_tok = expanded_test.map(
+            lambda example: process_single_qa(
+                tokenizer, example, args.max_length, max_label_len=args.max_label_len, is_train=False
+            ),
+            batched=False,
+            num_proc=args.map_num_proc,
+            remove_columns=["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"]
         )
 
 # ───────── FREE large raw datasets to save RAM ─────────
-del train_raw
+del train_raw, eval_raw, expanded_train, expanded_eval
+if test_raw:
+    del test_raw
+if expanded_test:
+    del expanded_test
 gc.collect()
 
 # ───────── training setup ─────────

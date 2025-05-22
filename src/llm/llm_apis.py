@@ -114,6 +114,41 @@ class QuestionSetProcessor:
         :return: Formatted answer string.
         """
         raise NotImplementedError
+        
+    def expand_dataset(self, ds: Any, answers: Dict[str, Sequence[Any]]):
+        """
+        Expand a dataset to include all question/answer pairs.
+        
+        :param ds: Dataset containing SMILES and answers.
+        :param answers: Dictionary of prepared answers.
+        :return: Expanded dataset with one entry per Q&A pair.
+        """
+        from datasets import Dataset
+        
+        expanded_data = {
+            "smiles": [],
+            "question_id": [],
+            "question_template": [],
+            "answer": [],
+            "assistant_template": [],
+            "system_prompt": []
+        }
+        
+        system_prompt = QUESTION_SETS[self.name]["system_prompt"]
+        
+        for i, smile in enumerate(ds["smiles"]):
+            for q in self.questions:
+                q_id = q["id"]
+                # Check if we have an answer for this question and molecule
+                if q_id in answers and i < len(answers[q_id]):
+                    expanded_data["smiles"].append(smile)
+                    expanded_data["question_id"].append(q_id)
+                    expanded_data["question_template"].append(q["user_template"])
+                    expanded_data["answer"].append(answers[q_id][i])
+                    expanded_data["assistant_template"].append(q["assistant_template"])
+                    expanded_data["system_prompt"].append(system_prompt)
+        
+        return Dataset.from_dict(expanded_data)
 
 class IUPACNamingProcessor(QuestionSetProcessor):
     """
@@ -430,7 +465,7 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequ
 # Define different question sets
 QUESTION_SETS = {
     "iupac_naming": {
-        "system_prompt": SYSTEM_PROMPT,
+        "system_prompt": SYSTEM_PROMPT+" Wrap the answer between the tags <result>...</result>.",
         "questions": [
             {
                 "id": "iupac_name",
@@ -440,7 +475,7 @@ QUESTION_SETS = {
         ]
     },
     "molecular_properties": {
-        "system_prompt": SYSTEM_PROMPT,
+        "system_prompt": SYSTEM_PROMPT+" Put the answer in \\boxed{}.",
         "questions": [
             {
                 "id": "carbon_count",
@@ -530,7 +565,7 @@ QUESTION_SETS = {
         ]
     },
     "all_properties": {
-        "system_prompt": SYSTEM_PROMPT,
+        "system_prompt": SYSTEM_PROMPT+" Put the answers in \\boxed{}.",
         "questions": [
             {
                 "id": "all_properties",
@@ -590,6 +625,87 @@ def build_train_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequen
     question_set = QUESTION_SETS[question_set_name]
     prompts, all_answers, all_templates = _build_prompts_and_answers(smiles, answers, question_set, is_train=True)
     return _build_batch(tok, prompts, all_answers, all_templates, max_len, max_len, is_train=True)
+
+
+def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label_len: int = None, is_train: bool = True) -> Dict[str, Any]:
+    """
+    Process a single question-answer pair from the expanded dataset.
+    
+    :param tok: Tokenizer instance
+    :param example: Dictionary containing a single Q&A pair with all necessary fields
+    :param max_len: Maximum length for the input
+    :param max_label_len: Maximum length for the label (only used for eval)
+    :param is_train: Whether this is for training or evaluation
+    :return: Dictionary with tokenized input_ids, attention_mask, and labels
+    """
+    # Build the prompt
+    if is_train:
+        # For training, we include both question and answer
+        if hasattr(tok, 'apply_chat_template'):
+            # Use chat template if available
+            prompt = [
+                {"role": "system", "content": example["system_prompt"]},
+                {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])},
+                {"role": "assistant", "content": example["assistant_template"].format(answer=example["answer"])}
+            ]
+            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
+        else:
+            # Fallback for models without chat templates
+            system = example["system_prompt"]
+            question = example["question_template"].format(smiles=example["smiles"])
+            answer = example["assistant_template"].format(answer=example["answer"])
+            prompt_str = f"{system}\n\nUser: {question}\n\nAssistant: {answer}"
+    else:
+        # For evaluation, only include the question (no answer)
+        if hasattr(tok, 'apply_chat_template'):
+            prompt = [
+                {"role": "system", "content": example["system_prompt"]},
+                {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])}
+            ]
+            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
+        else:
+            system = example["system_prompt"]
+            question = example["question_template"].format(smiles=example["smiles"])
+            prompt_str = f"{system}\n\nUser: {question}\n\nAssistant: "
+    
+    # Tokenize the prompt
+    prompt_enc = tok(prompt_str, padding="max_length", truncation=True, max_length=max_len, return_tensors="np")
+    
+    if is_train:
+        # For training: find the answer span in the prompt
+        answer_text = str(example["answer"])
+        answer_ids = tok(answer_text, add_special_tokens=False)["input_ids"]
+        
+        input_ids_list = prompt_enc["input_ids"].tolist()[0]  # Get the first item since we process one example at a time
+        
+        # Find where answer starts in the input_ids
+        start_idx = -1
+        for i in range(len(input_ids_list) - len(answer_ids) + 1):
+            if input_ids_list[i : i + len(answer_ids)] == answer_ids[:len(input_ids_list)-i]:
+                start_idx = i
+                break
+        
+        # Create label with -100 for non-answer tokens
+        label = [-100] * len(input_ids_list)
+        if start_idx >= 0:
+            for j, tok_id in enumerate(answer_ids):
+                if start_idx + j < len(label):
+                    label[start_idx + j] = tok_id
+        else:
+            print(f"Warning: Answer not found in input_ids for example with answer {answer_text}")
+        
+        prompt_enc["labels"] = [label]  # Add as a list to maintain batch dimension
+    else:
+        # For evaluation: right-align answer tokens
+        formatted_answer = example["assistant_template"].format(answer=example["answer"])
+        ans_enc = tok(formatted_answer, truncation=True, add_special_tokens=False, max_length=max_label_len, return_tensors="np")
+        answer = ans_enc["input_ids"].tolist()[0]
+        
+        label = [-100] * max_len
+        label[-len(answer):] = answer[-max_len:]
+        prompt_enc["labels"] = [label]  # Add as a list to maintain batch dimension
+    
+    return prompt_enc
 
 def _build_batch(tok, prompts, all_answers, all_templates, max_prompt_len, max_label_len, is_train):
     prompt_strs = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False, enable_thinking=False) for m in prompts]
