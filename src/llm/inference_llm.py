@@ -84,7 +84,7 @@ def interact_with_chatbot(user_input, conversation_history):
             index = 0
         
         # Get the final response (after thinking content if present)
-        response_text = tokenizer.decode(output_ids[index:], skip_special_tokens=True).strip("\n")
+        response_text = tokenizer.decode(output_ids[index:]).strip("\n")
         
         # Optionally print thinking content for debugging
         if index > 0 and not args.disable_thinking:

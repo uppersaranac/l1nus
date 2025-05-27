@@ -63,9 +63,9 @@ def test_build_eval_batch(tokenizer, toy_data):
         assert any(tok != -100 for tok in label[max_prompt_len - max_label_len:])
 
 def test_norm():
-    assert _norm("It is <result>ethanol</result>") == "ethanol"
-    assert _norm(" <result>ethanol</result> ") == "ethanol"
-    assert _norm("It is \\boxed{3}") == "3"
+    assert _norm("It is <|extra_100|>ethanol<|extra_101|") == "ethanol"
+    assert _norm(" <|extra_100|ethanol<|extra_101|> ") == "ethanol"
+    assert _norm("It is <|extra_100|ethanol<|extra_101|") == "ethanol"
 
 def test_count_heavy_atoms():
     assert count_heavy_atoms("CCO") == 3  # ethanol: 2C, 1O

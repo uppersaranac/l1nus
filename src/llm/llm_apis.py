@@ -465,112 +465,112 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequ
 # Define different question sets
 QUESTION_SETS = {
     "iupac_naming": {
-        "system_prompt": SYSTEM_PROMPT+" Wrap the answer between the tags <result>...</result>.",
+        "system_prompt": SYSTEM_PROMPT+" Place the answer between <|extra_100|> and <|extra_101|>.",
         "questions": [
             {
                 "id": "iupac_name",
                 "user_template": "Use the IUPAC naming rules to name the molecule {smiles}.",
-                "assistant_template": "The correct IUPAC name for this structure is <result>{answer}</result>."
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>."
             }
         ]
     },
     "molecular_properties": {
-        "system_prompt": SYSTEM_PROMPT+" Put the answer in \\boxed{}.",
+        "system_prompt": SYSTEM_PROMPT+" Place the answer between <|extra_100|> and <|extra_101|>.  The answer should be a number.",
         "questions": [
             {
                 "id": "carbon_count",
                 "user_template": "How many carbon atoms are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "heavy_atom_count",
                 "user_template": "How many heavy (non-hydrogen) atoms are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "non_hydrogen_bond_count",
                 "user_template": "How many bonds not to hydrogen are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "positive_formal_charge_count",
                 "user_template": "How many atoms with positive formal charge are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "negative_formal_charge_count",
                 "user_template": "How many atoms with negative formal charge are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "nitrogen_count",
                 "user_template": "How many nitrogen atoms are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "oxygen_count",
                 "user_template": "How many oxygen atoms are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "sulfur_count",
                 "user_template": "How many sulfur atoms are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "phosphorus_count",
                 "user_template": "How many phosphorus atoms are in the molecule {smiles}?", 
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "chlorine_count", 
                 "user_template": "How many chlorine atoms are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "fluorine_count",
                 "user_template": "How many fluorine atoms are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "ring_count",
                 "user_template": "How many rings are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "aromatic_ring_count",
                 "user_template": "How many aromatic rings are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "double_bond_count",
                 "user_template": "How many double bonds are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "triple_bond_count",
                 "user_template": "How many triple bonds are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "stereo_double_bond_count",
                 "user_template": "How many stereo double bonds are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             },
             {
                 "id": "stereocenter_count",
                 "user_template": "How many stereocenters are in the molecule {smiles}?",
-                "assistant_template": "\\boxed{{{answer}}}"
+                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
             }
         ]
     },
     "all_properties": {
-        "system_prompt": SYSTEM_PROMPT+" Put the answers in \\boxed{}.",
+        "system_prompt": SYSTEM_PROMPT+" Put the answers in <|extra_100|> and <|extra_101|>.",
         "questions": [
             {
                 "id": "all_properties",
                 "user_template": "Analyze the following molecular properties for the molecule {smiles}: carbon atoms, nitrogen atoms, oxygen atoms, sulfur atoms, phosphorus atoms, chlorine atoms, fluorine atoms, rings, aromatic rings, double bonds, triple bonds, stereo double bonds, stereocenters, and the IUPAC name. Provide a comprehensive report.",
-                "assistant_template": "Molecular Analysis of {smiles}:\n\nCarbon atoms: \\boxed{{{carbon_count}}}\nNitrogen atoms: \\boxed{{{nitrogen_count}}}\nOxygen atoms: \\boxed{{{oxygen_count}}}\nSulfur atoms: \\boxed{{{sulfur_count}}}\nPhosphorus atoms: \\boxed{{{phosphorus_count}}}\nChlorine atoms: \\boxed{{{chlorine_count}}}\nFluorine atoms: \\boxed{{{fluorine_count}}}\nRings: \\boxed{{{ring_count}}}\nAromatic rings: \\boxed{{{aromatic_ring_count}}}\nDouble bonds: \\boxed{{{double_bond_count}}}\nTriple bonds: \\boxed{{{triple_bond_count}}}\nStereo double bonds: \\boxed{{{stereo_double_bond_count}}}\nStereocenters: \\boxed{{{stereocenter_count}}}\nHeavy atoms: \\boxed{{{heavy_atom_count}}}\nBonds not to hydrogen: \\boxed{{{non_hydrogen_bond_count}}}\nAtoms with positive formal charge: \\boxed{{{positive_formal_charge_count}}}\nAtoms with negative formal charge: \\boxed{{{negative_formal_charge_count}}}\nIUPAC name: <result>{iupac_name}</result>"
+                "assistant_template": "Molecular Analysis of {smiles}:\n\nCarbon atoms: <|extra_100|>{carbon_count}<|extra_101|>\nNitrogen atoms: <|extra_100|>{nitrogen_count}<|extra_101|>\nOxygen atoms: <|extra_100|>{oxygen_count}<|extra_101|>\nSulfur atoms: <|extra_100|>{sulfur_count}<|extra_101|>\nPhosphorus atoms: <|extra_100|>{phosphorus_count}<|extra_101|>\nChlorine atoms: <|extra_100|>{chlorine_count}<|extra_101|>\nFluorine atoms: <|extra_100|>{fluorine_count}<|extra_101|>\nRings: <|extra_100|>{ring_count}<|extra_101|>\nAromatic rings: <|extra_100|>{aromatic_ring_count}<|extra_101|>\nDouble bonds: <|extra_100|>{double_bond_count}<|extra_101|>\nTriple bonds: <|extra_100|>{triple_bond_count}<|extra_101|>\nStereo double bonds: <|extra_100|>{stereo_double_bond_count}<|extra_101|>\nStereocenters: <|extra_100|>{stereocenter_count}<|extra_101|>\nHeavy atoms: <|extra_100|>{heavy_atom_count}<|extra_101|>\nBonds not to hydrogen: <|extra_100|>{non_hydrogen_bond_count}<|extra_101|>\nAtoms with positive formal charge: <|extra_100|>{positive_formal_charge_count}<|extra_101|>\nAtoms with negative formal charge: <|extra_100|>{negative_formal_charge_count}<|extra_101|>\nIUPAC name: <|extra_100|>{iupac_name}<|extra_101|>"
             }
         ]
     }
@@ -669,32 +669,35 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
             prompt_str = f"{system}\n\nUser: {question}\n\nAssistant: "
     
     # Tokenize the prompt
-    prompt_enc = tok(prompt_str, padding="max_length", truncation=True, max_length=max_len, return_tensors="np")
+    tokenized_output = tok(prompt_str, padding="max_length", truncation=True, max_length=max_len, return_tensors="np")
+    
+    # Ensure input_ids and attention_mask are 1D
+    # The tokenizer returns (1, seq_len) for single examples, so we take the first element.
+    input_ids = tokenized_output["input_ids"][0]
+    attention_mask = tokenized_output["attention_mask"][0]
+    
+    processed_example = {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask
+    }
     
     if is_train:
         # For training: find the answer span in the prompt
         answer_text = str(example["answer"])
         answer_ids = tok(answer_text, add_special_tokens=False)["input_ids"]
         
-        input_ids_list = prompt_enc["input_ids"].tolist()[0]  # Get the first item since we process one example at a time
+        input_ids_list = input_ids.tolist() # Already 1D
         
-        # Find where answer starts in the input_ids
-        start_idx = -1
-        for i in range(len(input_ids_list) - len(answer_ids) + 1):
-            if input_ids_list[i : i + len(answer_ids)] == answer_ids[:len(input_ids_list)-i]:
-                start_idx = i
-                break
-        
-        # Create label with -100 for non-answer tokens
+        # Use robust helper to find answer token positions
+        answer_span = find_answer_token_positions(tok, prompt_str, answer_text, input_ids_list)
         label = [-100] * len(input_ids_list)
-        if start_idx >= 0:
-            for j, tok_id in enumerate(answer_ids):
-                if start_idx + j < len(label):
-                    label[start_idx + j] = tok_id
+        if answer_span is not None:
+            start_idx, end_idx = answer_span
+            for j in range(start_idx, end_idx):
+                label[j] = input_ids_list[j]
         else:
             print(f"Warning: Answer not found in input_ids for example with answer {answer_text}")
-        
-        prompt_enc["labels"] = [label]  # Add as a list to maintain batch dimension
+        processed_example["labels"] = label  # Assign 1D list directly
     else:
         # For evaluation: right-align answer tokens
         formatted_answer = example["assistant_template"].format(answer=example["answer"])
@@ -703,9 +706,9 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
         
         label = [-100] * max_len
         label[-len(answer):] = answer[-max_len:]
-        prompt_enc["labels"] = [label]  # Add as a list to maintain batch dimension
+        processed_example["labels"] = label  # Assign 1D list directly
     
-    return prompt_enc
+    return processed_example
 
 def _build_batch(tok, prompts, all_answers, all_templates, max_prompt_len, max_label_len, is_train):
     prompt_strs = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False, enable_thinking=False) for m in prompts]
@@ -715,16 +718,13 @@ def _build_batch(tok, prompts, all_answers, all_templates, max_prompt_len, max_l
         answers_ids = [tok(str(text), add_special_tokens=False)["input_ids"] for text in all_answers]
         input_ids_list = prompt_enc["input_ids"].tolist()
         labels_full = []
-        for idx, (row_ids, ans_ids) in enumerate(zip(input_ids_list, answers_ids)):
-            start_idx = -1
-            for i in range(len(row_ids) - len(ans_ids) + 1):
-                if row_ids[i : i + len(ans_ids)] == ans_ids[:len(row_ids)-i]:
-                    start_idx = i
-                    break
+        for idx, (prompt_str, row_ids, answer_text) in enumerate(zip(prompt_strs, input_ids_list, all_answers)):
+            answer_span = find_answer_token_positions(tok, prompt_str, answer_text, row_ids)
             label = [-100] * len(row_ids)
-            if start_idx >= 0:
-                for j, tok_id in enumerate(ans_ids):
-                    label[start_idx + j] = tok_id
+            if answer_span is not None:
+                start_idx, end_idx = answer_span
+                for j in range(start_idx, end_idx):
+                    label[j] = row_ids[j]
             else:
                 print(f"Warning: Answer not found in input_ids for example {idx}")
             labels_full.append(label)
@@ -753,11 +753,59 @@ def build_eval_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequenc
 
 
 # ─────────────────────────── metrics & helpers ────────────────────────
+
+def find_answer_token_positions(tokenizer, prompt_str, answer_str, input_ids_list):
+    """
+    Robustly find the token span in input_ids_list corresponding to answer_str in prompt_str.
+    Uses offset mapping if available, otherwise falls back to best-effort substring search.
+    Returns (start_idx, end_idx) or None if not found.
+    """
+    # Try to get offset mapping
+    try:
+        enc = tokenizer(prompt_str, return_offsets_mapping=True, add_special_tokens=False)
+        offsets = enc.get("offset_mapping")
+        ids = enc["input_ids"]
+        if offsets is not None:
+            # Find answer substring in prompt
+            answer_start = prompt_str.find(answer_str)
+            if answer_start == -1:
+                # Try to ignore whitespace differences
+                import re
+                match = re.search(re.escape(answer_str.strip()), prompt_str)
+                if match:
+                    answer_start = match.start()
+                else:
+                    return None
+            answer_end = answer_start + len(answer_str)
+            # Find token indices covering this span
+            start_idx = end_idx = None
+            for i, (s, e) in enumerate(offsets):
+                if s <= answer_start < e:
+                    start_idx = i
+                if s < answer_end <= e:
+                    end_idx = i+1
+                    break
+            if start_idx is not None and end_idx is not None:
+                return (start_idx, end_idx)
+            # Fallback: cover all tokens overlapping the span
+            indices = [i for i, (s, e) in enumerate(offsets) if not (e <= answer_start or s >= answer_end)]
+            if indices:
+                return (indices[0], indices[-1]+1)
+            return None
+    except Exception as e:
+        pass
+    # Fallback: try to match answer token ids as a subsequence
+    answer_ids = tokenizer(answer_str, add_special_tokens=False)["input_ids"]
+    for i in range(len(input_ids_list) - len(answer_ids) + 1):
+        if input_ids_list[i : i + len(answer_ids)] == answer_ids:
+            return (i, i + len(answer_ids))
+    return None
+
 exact_match = evaluate.load("exact_match")
 
 def _norm(s: str) -> str:
     """
-    Normalize prediction/label strings for exact-match comparison, handling \boxed{{}} and <result>...</result> tags.
+    Normalize prediction/label strings for exact-match comparison.
     For multi-answer questions (e.g., all_properties), extracts all answers and joins them with '|'.
 
     :param s: Input string.
@@ -765,13 +813,13 @@ def _norm(s: str) -> str:
     """
     import re
     # Extract all \boxed{...} answers
-    boxed = re.findall(r"\\boxed\{\{?(.*?)\}?\}", s)
+    #boxed = re.findall(r"\\boxed\{\{?(.*?)\}?\}", s)
     # Extract all <result>...</result> answers
-    results = re.findall(r"<result>(.*?)</result>", s)
-    values = boxed + results
-    if values:
+    results = re.findall(r"<extra_100>(.*?)</extra_101>", s)
+    #values = boxed + results
+    if results:
         # Join all extracted values with '|', strip whitespace and trailing periods
-        return '|'.join(v.strip().rstrip('.') for v in values)
+        return '|'.join(v.strip().rstrip('.') for v in results)
 
     return s.strip().rstrip('.')
 
@@ -793,6 +841,10 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
         preds, labels = eval_preds
         if isinstance(preds, tuple):
             preds = preds[0]
+
+        # If preds are logits (batch_size, seq_len, vocab_size), take argmax to get token ids
+        if preds.ndim == 3:
+            preds = np.argmax(preds, axis=2)
 
         decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
         labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
