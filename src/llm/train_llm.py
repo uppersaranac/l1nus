@@ -102,7 +102,7 @@ parser.add_argument("--num_beams", type=int, default=1)
 parser.add_argument("--num_train_epochs", type=int, default=1)
 parser.add_argument("--map_num_proc", type=int, default=os.cpu_count()-2,
                     help="Number of parallel processes to use in dataset.map")
-parser.add_argument("--per_device_train_batch_size", type=int, default=4)
+parser.add_argument("--per_device_train_batch_size", type=int, default=2)
 parser.add_argument("--per_device_eval_batch_size",  type=int, default=1)
 parser.add_argument("--logging_steps", type=int, default=200)
 parser.add_argument("--eval_steps",    type=int, default=400)
