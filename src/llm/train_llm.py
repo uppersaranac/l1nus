@@ -208,11 +208,10 @@ with accelerator.main_process_first():
         )
 
 # ───────── FREE large raw datasets to save RAM ─────────
-del train_raw, eval_raw, expanded_train, expanded_eval
+del train_raw, eval_raw, expanded_train
 if test_raw:
     del test_raw
-if expanded_test:
-    del expanded_test
+
 gc.collect()
 
 # ───────── training setup ─────────
@@ -255,7 +254,7 @@ val_metrics = trainer.evaluate(eval_dataset=eval_tok)
 logging.info("Validation metrics: %s", val_metrics)
 val_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, eval_tok)
 if accelerator.is_main_process:
-    show_examples(eval_raw, val_preds, tokenizer, n=10)
+    show_examples(expanded_eval, val_preds, tokenizer, n=10)
 
 if test_tok and test_tok is not None:
     test_metrics = trainer.evaluate(eval_dataset=test_tok)
@@ -263,7 +262,7 @@ if test_tok and test_tok is not None:
 
     test_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, test_tok)
     if accelerator.is_main_process:
-        show_examples(test_raw, test_preds, tokenizer, n=10)
+        show_examples(expanded_test, test_preds, tokenizer, n=10)
 
 trainer.save_model(str(Path(args.output_dir).expanduser()))
 logging.info("Model saved to %s", args.output_dir)
