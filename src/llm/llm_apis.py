@@ -592,41 +592,6 @@ def load_arrow_dataset(path: str, limit: Optional[int] = None) -> Dataset:
     return ds
 
 
-# ───────────────────────── tokenisation helpers ───────────────────────
-def _build_prompts_and_answers(smiles, answers, question_set, is_train=True):
-    prompts = []
-    all_answers = []
-    all_templates = []
-    for i, s in enumerate(smiles):
-        for question in question_set["questions"]:
-            qid = question["id"]
-            if qid in answers and i < len(answers[qid]):
-                if is_train:
-                    a = answers[qid][i]
-                    prompts.append([
-                        {"role": "system", "content": question_set["system_prompt"]},
-                        {"role": "user", "content": question["user_template"].format(smiles=s)},
-                        {"role": "assistant", "content": question["assistant_template"].format(answer=a)}
-                    ])
-                    all_answers.append(a)
-                else:
-                    prompts.append([
-                        {"role": "system", "content": question_set["system_prompt"]},
-                        {"role": "user", "content": question["user_template"].format(smiles=s)}
-                    ])
-                    all_answers.append(answers[qid][i])
-                    all_templates.append(question["assistant_template"])
-    return prompts, all_answers, all_templates
-
-def build_train_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequence[str]], max_len: int, question_set_name: str = "iupac_naming") -> Dict[str, Any]:
-    """
-    Build a training batch for a specific question set.
-    """
-    question_set = QUESTION_SETS[question_set_name]
-    prompts, all_answers, all_templates = _build_prompts_and_answers(smiles, answers, question_set, is_train=True)
-    return _build_batch(tok, prompts, all_answers, all_templates, max_len, max_len, is_train=True)
-
-
 def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label_len: int = None, is_train: bool = True) -> Dict[str, Any]:
     """
     Process a single question-answer pair from the expanded dataset.
@@ -684,12 +649,11 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
     if is_train:
         # For training: find the answer span in the prompt
         answer_text = str(example["answer"])
-        answer_ids = tok(answer_text, add_special_tokens=False)["input_ids"]
         
         input_ids_list = input_ids.tolist() # Already 1D
         
         # Use robust helper to find answer token positions
-        answer_span = find_answer_token_positions(tok, prompt_str, answer_text, input_ids_list)
+        answer_span = find_answer_token_positions(tok, prompt_str, answer_text, input_ids_list, max_len)
         label = [-100] * len(input_ids_list)
         if answer_span is not None:
             start_idx, end_idx = answer_span
@@ -710,61 +674,34 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
     
     return processed_example
 
-def _build_batch(tok, prompts, all_answers, all_templates, max_prompt_len, max_label_len, is_train):
-    prompt_strs = [tok.apply_chat_template(m, add_generation_prompt=True, tokenize=False, enable_thinking=False) for m in prompts]
-    prompt_enc = tok(prompt_strs, padding="max_length", truncation=True, max_length=max_prompt_len, return_tensors="np")
-    if is_train:
-        # Training: label is answer span in prompt
-        answers_ids = [tok(str(text), add_special_tokens=False)["input_ids"] for text in all_answers]
-        input_ids_list = prompt_enc["input_ids"].tolist()
-        labels_full = []
-        for idx, (prompt_str, row_ids, answer_text) in enumerate(zip(prompt_strs, input_ids_list, all_answers)):
-            answer_span = find_answer_token_positions(tok, prompt_str, answer_text, row_ids)
-            label = [-100] * len(row_ids)
-            if answer_span is not None:
-                start_idx, end_idx = answer_span
-                for j in range(start_idx, end_idx):
-                    label[j] = row_ids[j]
-            else:
-                print(f"Warning: Answer not found in input_ids for example {idx}")
-            labels_full.append(label)
-        prompt_enc["labels"] = labels_full
-        return prompt_enc
-    else:
-        # Eval: label is right-aligned answer tokens
-        formatted_answers = [template.format(answer=a) for template, a in zip(all_templates, all_answers)]
-        ans_enc = tok(formatted_answers, truncation=True, add_special_tokens=False, max_length=max_label_len, return_tensors="np")
-        answers = ans_enc["input_ids"].tolist()
-        labels_full = []
-        for answer in answers:
-            label = [-100] * max_prompt_len
-            label[-len(answer):] = answer[-max_prompt_len:]
-            labels_full.append(label)
-        prompt_enc["labels"] = labels_full
-        return prompt_enc
-
-def build_eval_batch(tok: Any, smiles: Sequence[str], answers: Dict[str, Sequence[str]], max_prompt_len: int, max_label_len: int, question_set_name: str = "iupac_naming") -> Dict[str, Any]:
-    """
-    Build an evaluation batch for a specific question set.
-    """
-    question_set = QUESTION_SETS[question_set_name]
-    prompts, all_answers, all_templates = _build_prompts_and_answers(smiles, answers, question_set, is_train=False)
-    return _build_batch(tok, prompts, all_answers, all_templates, max_prompt_len, max_label_len, is_train=False)
-
 
 # ─────────────────────────── metrics & helpers ────────────────────────
 
-def find_answer_token_positions(tokenizer, prompt_str, answer_str, input_ids_list):
+def find_answer_token_positions(tokenizer, prompt_str, answer_str, input_ids_list, max_len):
     """
     Robustly find the token span in input_ids_list corresponding to answer_str in prompt_str.
     Uses offset mapping if available, otherwise falls back to best-effort substring search.
+    Uses the same tokenizer options as main prompt tokenization: padding="max_length", truncation=True, max_length=max_len, return_tensors="np".
     Returns (start_idx, end_idx) or None if not found.
+    Args:
+        tokenizer: The tokenizer object.
+        prompt_str: The full prompt string.
+        answer_str: The answer string to locate.
+        input_ids_list: The tokenized input_ids list for the prompt.
+        max_len: The max length used for tokenization.
     """
     # Try to get offset mapping
     try:
-        enc = tokenizer(prompt_str, return_offsets_mapping=True, add_special_tokens=False)
-        offsets = enc.get("offset_mapping")
-        ids = enc["input_ids"]
+        enc = tokenizer(
+            prompt_str,
+            padding="max_length",
+            truncation=True,
+            max_length=max_len,
+            return_tensors="np",
+            return_offsets_mapping=True,
+            add_special_tokens=False
+        )
+        offsets = enc.get("offset_mapping")[0]
         if offsets is not None:
             # Find answer substring in prompt
             answer_start = prompt_str.find(answer_str)
@@ -795,7 +732,11 @@ def find_answer_token_positions(tokenizer, prompt_str, answer_str, input_ids_lis
     except Exception as e:
         pass
     # Fallback: try to match answer token ids as a subsequence
-    answer_ids = tokenizer(answer_str, add_special_tokens=False)["input_ids"]
+    answer_enc = tokenizer(
+        answer_str,
+        add_special_tokens=False
+    )
+    answer_ids = answer_enc["input_ids"]
     for i in range(len(input_ids_list) - len(answer_ids) + 1):
         if input_ids_list[i : i + len(answer_ids)] == answer_ids:
             return (i, i + len(answer_ids))

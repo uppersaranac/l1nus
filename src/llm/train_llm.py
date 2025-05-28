@@ -14,28 +14,12 @@ from transformers import (
 )
 from accelerate import Accelerator
 
-# Import rdkit for molecular property calculations
-from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors
-from typing import Any, Sequence, Dict
 
 accelerator = Accelerator()
 
 from llm.llm_apis import (
-    calculate_molecular_properties,
-    count_heavy_atoms,
-    count_non_hydrogen_bonds,
-    count_positive_formal_charge_atoms,
-    count_negative_formal_charge_atoms,
-    QuestionSetProcessor,
-    IUPACNamingProcessor,
-    MolecularPropertiesProcessor,
-    AllPropertiesProcessor,
     load_arrow_dataset,
-    build_train_batch,
-    build_eval_batch,
     process_single_qa,
-    _norm,
     compute_metrics_closure,
     show_examples,
     do_generation,
