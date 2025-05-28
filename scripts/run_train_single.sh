@@ -59,6 +59,7 @@ export ARGS="--max_records 0 \
 --num_train_epochs 5 \
 --eval_steps 1000 \
 --eval_limit 30 \
+--question_set molecular_properties \
 --train_file ~/data/pubchem/arrow/cluster_6M_train.arrow \
 --eval_file ~/data/pubchem/arrow/cluster_6M_eval.arrow \
 "
