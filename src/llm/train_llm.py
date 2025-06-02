@@ -95,18 +95,42 @@ parser.add_argument("--output_dir", type=str, default="~/results", help="Path to
 parser.add_argument("--model_name", default="Qwen/Qwen3-1.7B")
 parser.add_argument("--max_records", default=3000, type=int)
 parser.add_argument("--eval_limit",  type=int, default=10)
-parser.add_argument("--max_length",  type=int, default=1024)
-parser.add_argument("--max_label_len", type=int, default=1024)
-parser.add_argument("--max_new_tokens", type=int, default=1024)
+parser.add_argument(
+    "--max_length",
+    type=int,
+    default=512,
+    help="Maximum total sequence length for input tensors (prompt + label) during training or evaluation. "
+         "Numerical relationship: len(prompt_tokens) + len(label_tokens) <= max_length. "
+         "Example: If max_length=1024, prompt=800 tokens, label=300 tokens, label will be truncated so that (prompt + label) <= 1024."
+)
+parser.add_argument(
+    "--max_label_len",
+    type=int,
+    default=512,
+    help="Maximum length for the label (target/output) sequence in supervised training. "
+         "Numerical relationship: len(label_tokens) <= max_label_len. "
+         "Example: If max_label_len=256 and label=300 tokens, label will be truncated to 256 tokens. "
+         "Note: The final combined length is still subject to max_length."
+)
+parser.add_argument(
+    "--max_new_tokens",
+    type=int,
+    default=512,
+    help="Maximum number of new tokens the model is allowed to generate during inference (generation). "
+         "Numerical relationship: generated_tokens <= max_new_tokens. "
+         "Example: If max_new_tokens=128, model will generate at most 128 new tokens for any prompt, regardless of input length. "
+         "This parameter does not affect input tensor size, only the length of generated output during inference."
+)
+
 parser.add_argument("--num_beams", type=int, default=1)
 parser.add_argument("--num_train_epochs", type=int, default=1)
 parser.add_argument("--map_num_proc", type=int, default=os.cpu_count()-2,
                     help="Number of parallel processes to use in dataset.map")
 parser.add_argument("--per_device_train_batch_size", type=int, default=2)
-parser.add_argument("--per_device_eval_batch_size",  type=int, default=1)
+parser.add_argument("--per_device_eval_batch_size",  type=int, default=2)
 parser.add_argument("--logging_steps", type=int, default=200)
 parser.add_argument("--eval_steps",    type=int, default=400)
-parser.add_argument("--gradient_accumulation_steps", type=int, default=4, help="number of steps during gradient accumulation. When using DeepSpeed, configure to use the same number of gradient accumulation step as in the DeepSpeed config")
+parser.add_argument("--gradient_accumulation_steps", type=int, default=8, help="number of steps during gradient accumulation. When using DeepSpeed, configure to use the same number of gradient accumulation step as in the DeepSpeed config")
 parser.add_argument("--question_set", type=str, default="iupac_naming", choices=["iupac_naming", "molecular_properties", "all_properties"],
                     help="Type of question set to use for training")
 parser.add_argument("--show_examples", action="store_true", help="Show example questions and answers and exit before training.")
@@ -203,6 +227,7 @@ targs = Seq2SeqTrainingArguments(
     output_dir=str(Path(args.output_dir).expanduser()),
     eval_strategy="steps",
     eval_steps=args.eval_steps,
+    batch_eval_metrics=True,  # necessary to avoid overflowing memory
     predict_with_generate=True,
     generation_max_length=args.max_new_tokens,
     generation_num_beams=args.num_beams,

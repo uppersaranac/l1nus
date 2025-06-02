@@ -772,37 +772,50 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
     :param tokenizer: Tokenizer instance.
     :return: Metrics computation function.
     """
-    def compute_metrics(eval_preds):
+    def compute_metrics(eval_preds, compute_result: bool = True):
         """
-        Compute metrics.
+        Compute metrics. With batch_eval_metrics=True, this function is called per batch and at the end with compute_result=True.
+        Accumulates predictions and labels across batches, and only computes/returns metrics when compute_result=True.
 
         :param eval_preds: Evaluation predictions.
-        :return: Computed metrics.
+        :param compute_result: Whether to return summary statistics (True at end of eval loop).
+        :return: Computed metrics (only when compute_result=True).
         """
+        # Use closure variables to accumulate results
+        if not hasattr(compute_metrics, "all_preds"):
+            compute_metrics.all_preds = []
+            compute_metrics.all_labels = []
         preds, labels = eval_preds
+        # Move to cpu and convert to numpy if needed
+        if isinstance(preds, torch.Tensor):
+            preds = preds.detach().cpu().numpy()
+        if isinstance(labels, torch.Tensor):
+            labels = labels.detach().cpu().numpy()
         if isinstance(preds, tuple):
             preds = preds[0]
-
-        # If preds are logits (batch_size, seq_len, vocab_size), take argmax to get token ids
         if preds.ndim == 3:
             preds = np.argmax(preds, axis=2)
-
         decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
         labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
         decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-
-        # Simple normalization
         decoded_preds = [_norm(p) for p in decoded_preds]
         decoded_labels = [_norm(l) for l in decoded_labels]
-        
-        # Compute exact match
-        exact_m = exact_match.compute(
-            predictions=decoded_preds, references=decoded_labels
-        )
-        
-        return exact_m
-        
+        compute_metrics.all_preds.extend(decoded_preds)
+        compute_metrics.all_labels.extend(decoded_labels)
+        if compute_result:
+            # Compute metrics only on the final call
+            exact_m = exact_match.compute(
+                predictions=compute_metrics.all_preds, references=compute_metrics.all_labels
+            )
+            # Reset for next eval
+            compute_metrics.all_preds = []
+            compute_metrics.all_labels = []
+            return exact_m
+        else:
+            # Return empty dict on intermediate calls
+            return {}
     return compute_metrics
+
 
 
 def show_examples(raw_ds: Dataset, preds: Any, tok: Any, n: int = 10) -> None:
