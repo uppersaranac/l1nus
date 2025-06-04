@@ -627,7 +627,8 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
                 {"role": "system", "content": example["system_prompt"]},
                 {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])}
             ]
-            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
+            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, 
+                                                tokenize=False, enable_thinking=False)
         else:
             system = example["system_prompt"]
             question = example["question_template"].format(smiles=example["smiles"])
@@ -818,43 +819,33 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
 
 
 
-def show_examples(raw_ds: Dataset, preds: Any, tok: Any, n: int = 10) -> None:
+def show_examples(raw_ds: Any, preds: Any, n: int = 10) -> None:
     """
-    Show examples.
+    Show examples for a specific question set using the appropriate processor.
 
     :param raw_ds: Raw dataset.
     :param preds: Predictions.
-    :param tok: Tokenizer.
     :param n: Number of examples to show.
     """
-    # Show some examples
-    for i in range(0, len(raw_ds), len(raw_ds)//n):
-        q = f"What is the IUPAC name for the molecule {raw_ds[i]['smiles']}?"
-        gt = f"It is {raw_ds[i]['iupac']}"
-        
-        # Decode the prediction
-        pd = tok.decode(preds[i])
-        
-        # Collapse consecutive  tokens into a single token
-        import re
-        pd = re.sub(r'(<\|im_end\|>\s*)+', ' ', pd)
-        
-        print(f"\n#{i}")
-        print("Q :", q)
-        print("GT:", gt)
-        print("PD:", pd)
+    for i in range(min(len(preds), n)):
+        smile = raw_ds["smiles"][i]
+        q_str = raw_ds["question_template"][i].format(smiles=smile)
+        a_str = raw_ds['answer'][i]
+        print(f"Q: {q_str}")
+        print(f"A: {a_str}")
+        print(f"P: {preds[i]}")
+        print("-" * 40  )
 
 
-def do_generation(num_beams: int, max_new_tokens: int, tokenizer: Any, model: Any, data: Any) -> np.ndarray:
+def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any) -> list[str]:
     """
     Perform generation.
 
-    :param num_beams: Number of beams.
     :param max_new_tokens: Maximum number of new tokens.
     :param tokenizer: Tokenizer instance.
     :param model: Model instance.
     :param data: Input data.
-    :return: Generated predictions.
+    :return: A list of generated prediction strings.
     """
     data.set_format(type="torch", columns=["input_ids", "attention_mask"])
     input_ids = data["input_ids"].to(model.device)
@@ -866,19 +857,14 @@ def do_generation(num_beams: int, max_new_tokens: int, tokenizer: Any, model: An
             input_ids=input_ids,
             attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
-            num_beams=num_beams,
-            do_sample=False,
-            early_stopping=True
+            # num_beams=num_beams,
+            # do_sample=False,
+            # early_stopping=True
         ).to('cpu').numpy()
 
-    # Strip the input_ids from the generated_ids
-    seq_lens = attention_mask.sum(dim=1).to('cpu').numpy()
-    preds = [g[s:] for g, s in zip(generated_ids, seq_lens)]
+    # Decode each sequence in the batch
+    decoded_sequences = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+    # Strip newline characters from each decoded sequence
+    response_texts = [seq.strip("\n") for seq in decoded_sequences]
 
-    # pad the predictions
-    max_pred_len = max(len(p) for p in preds)
-    padded_preds = np.zeros((len(preds), max_pred_len), dtype=np.int64)
-    for i, p in enumerate(preds):
-        padded_preds[i, :len(p)] = p
-    
-    return padded_preds
+    return response_texts

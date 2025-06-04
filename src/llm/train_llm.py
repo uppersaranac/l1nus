@@ -4,7 +4,6 @@ import argparse, logging, gc, sys
 from pathlib import Path
 import os
 
-import numpy as np
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -23,7 +22,6 @@ from llm.llm_apis import (
     compute_metrics_closure,
     show_examples,
     do_generation,
-    QUESTION_SETS,
     PROCESSOR_CLASSES,
 )
 from typing import Any, Sequence, Dict
@@ -93,12 +91,12 @@ parser.add_argument("--output_dir", type=str, default="~/results", help="Path to
 # parser.add_argument("--model_name", default="Qwen/Qwen2.5-0.5B-Instruct")
 # parser.add_argument("--model_name", default="Qwen/Qwen2.5-1.5B-Instruct")
 parser.add_argument("--model_name", default="Qwen/Qwen3-1.7B")
-parser.add_argument("--max_records", default=3000, type=int)
+parser.add_argument("--max_records", default=0, type=int)
 parser.add_argument("--eval_limit",  type=int, default=10)
 parser.add_argument(
     "--max_length",
     type=int,
-    default=512,
+    default=1024,
     help="Maximum total sequence length for input tensors (prompt + label) during training or evaluation. "
          "Numerical relationship: len(prompt_tokens) + len(label_tokens) <= max_length. "
          "Example: If max_length=1024, prompt=800 tokens, label=300 tokens, label will be truncated so that (prompt + label) <= 1024."
@@ -106,7 +104,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_label_len",
     type=int,
-    default=512,
+    default=1024,
     help="Maximum length for the label (target/output) sequence in supervised training. "
          "Numerical relationship: len(label_tokens) <= max_label_len. "
          "Example: If max_label_len=256 and label=300 tokens, label will be truncated to 256 tokens. "
@@ -115,7 +113,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_new_tokens",
     type=int,
-    default=512,
+    default=1024,
     help="Maximum number of new tokens the model is allowed to generate during inference (generation). "
          "Numerical relationship: generated_tokens <= max_new_tokens. "
          "Example: If max_new_tokens=128, model will generate at most 128 new tokens for any prompt, regardless of input length. "
@@ -126,10 +124,10 @@ parser.add_argument("--num_beams", type=int, default=1)
 parser.add_argument("--num_train_epochs", type=int, default=1)
 parser.add_argument("--map_num_proc", type=int, default=os.cpu_count()-2,
                     help="Number of parallel processes to use in dataset.map")
-parser.add_argument("--per_device_train_batch_size", type=int, default=2)
-parser.add_argument("--per_device_eval_batch_size",  type=int, default=2)
+parser.add_argument("--per_device_train_batch_size", type=int, default=8)
+parser.add_argument("--per_device_eval_batch_size",  type=int, default=8)
 parser.add_argument("--logging_steps", type=int, default=200)
-parser.add_argument("--eval_steps",    type=int, default=400)
+parser.add_argument("--eval_steps",    type=int, default=1000)
 parser.add_argument("--gradient_accumulation_steps", type=int, default=8, help="number of steps during gradient accumulation. When using DeepSpeed, configure to use the same number of gradient accumulation step as in the DeepSpeed config")
 parser.add_argument("--question_set", type=str, default="iupac_naming", choices=["iupac_naming", "molecular_properties", "all_properties"],
                     help="Type of question set to use for training")
@@ -146,6 +144,10 @@ tokenizer.pad_token = tokenizer.eos_token
 model = AutoModelForCausalLM.from_pretrained(args.model_name,
                                              torch_dtype=getattr(torch, args.model_dtype))
 
+# Determine device and move model
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+logging.info(f"Model moved to device: {device}")
 
 try:
     processor = PROCESSOR_CLASSES[args.question_set]()
@@ -201,9 +203,12 @@ with accelerator.main_process_first():
         ),
         batched=False,
         num_proc=args.map_num_proc,
-        remove_columns=["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"]
     )
-    
+    # create a minimal version of the eval dataset for training. Huggingface dataset iterators
+    # lose the labels column if there are too many columns in the dataset, causing bizarrely
+    # the user defined metric to not be installed.
+    eval_tok_min = eval_tok.remove_columns(["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"])
+
     test_tok = None
     if expanded_test:
         test_tok = expanded_test.map(
@@ -212,8 +217,11 @@ with accelerator.main_process_first():
             ),
             batched=False,
             num_proc=args.map_num_proc,
-            remove_columns=["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"]
         )
+        # create a minimal version of the test dataset for training. Huggingface dataset iterators
+        # lose the labels column if there are too many columns in the dataset, causing bizarrely
+        # the user defined metric to not be installed.
+        test_tok_min = test_tok.remove_columns(["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"])
 
 # ───────── FREE large raw datasets to save RAM ─────────
 del train_raw, eval_raw, expanded_train
@@ -221,6 +229,10 @@ if test_raw:
     del test_raw
 
 gc.collect()
+
+# if accelerator.is_main_process:
+#     val_preds = do_generation(args.max_new_tokens, tokenizer, model, eval_tok)
+#     show_examples(eval_tok, val_preds, n=10)
 
 # ───────── training setup ─────────
 targs = Seq2SeqTrainingArguments(
@@ -230,7 +242,7 @@ targs = Seq2SeqTrainingArguments(
     batch_eval_metrics=True,  # necessary to avoid overflowing memory
     predict_with_generate=True,
     generation_max_length=args.max_new_tokens,
-    generation_num_beams=args.num_beams,
+#    generation_num_beams=args.num_beams,
     num_train_epochs=args.num_train_epochs,
     per_device_train_batch_size=args.per_device_train_batch_size,
     per_device_eval_batch_size=args.per_device_eval_batch_size,
@@ -248,7 +260,7 @@ trainer = Trainer(
     model=model,
     args=targs,
     train_dataset=train_tok,
-    eval_dataset=eval_tok,
+    eval_dataset=eval_tok_min,
     tokenizer=tokenizer,
     compute_metrics=compute_metrics,
 )
@@ -257,21 +269,21 @@ logging.info("Starting training …")
 trainer.train()
 
 logging.info("Generating validation predictions …")
-val_metrics = trainer.evaluate(eval_dataset=eval_tok)
+val_metrics = trainer.evaluate(eval_dataset=eval_tok_min)
 # labels = eval_tok["labels"]
 # val_metrics = compute_metrics((val_preds, np.array(labels)))
 logging.info("Validation metrics: %s", val_metrics)
-val_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, eval_tok)
+val_preds = do_generation(args.max_new_tokens, tokenizer, model, eval_tok_min)
 if accelerator.is_main_process:
-    show_examples(expanded_eval, val_preds, tokenizer, n=10)
+    show_examples(eval_tok, val_preds, n=10)
 
 if test_tok and test_tok is not None:
-    test_metrics = trainer.evaluate(eval_dataset=test_tok)
+    test_metrics = trainer.evaluate(eval_dataset=test_tok_min)
     logging.info("Test metrics: %s", test_metrics)
 
-    test_preds = do_generation(args.num_beams, args.max_new_tokens, tokenizer, model, test_tok)
+    test_preds = do_generation(args.max_new_tokens, tokenizer, model, test_tok_min)
     if accelerator.is_main_process:
-        show_examples(expanded_test, test_preds, tokenizer, n=10)
+        show_examples(test_tok, test_preds, n=10)
 
 trainer.save_model(str(Path(args.output_dir).expanduser()))
 logging.info("Model saved to %s", args.output_dir)
