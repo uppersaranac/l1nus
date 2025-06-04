@@ -46,7 +46,7 @@ def interact_with_chatbot(user_input, conversation_history):
     # Step 2.3: Generate a response using the chatbot pipeline
 
     messages = [
-        {"role": "system", "content": "You are a chemist that tries to answer user questions as accurately as possible. Work through problems given to you step by step. If you don't know the answer, you can say I don't know."},
+        {"role": "system", "content": "Do not think. Place the answer between <|extra_100|> and <|extra_101|>.  The answer should be a number."},
         {"role": "user", "content": conversation_text},
     ]
     

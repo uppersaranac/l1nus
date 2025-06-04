@@ -8,6 +8,7 @@ import numpy as np
 import evaluate
 from datasets import Dataset
 import torch
+from transformers import TrainerCallback
 
 # Import rdkit for molecular property calculations
 from rdkit import Chem
@@ -619,11 +620,11 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
             system = example["system_prompt"]
             question = example["question_template"].format(smiles=example["smiles"])
             answer = example["assistant_template"].format(answer=example["answer"])
-            prompt_str = f"{system}\n\nUser: {question}\n\nAssistant: {answer}"
+            prompt_str = f"{system}\n\nuser: {question}\n\nassistant: {answer}"
     else:
         # For evaluation, only include the question (no answer)
         if hasattr(tok, 'apply_chat_template'):
-            prompt = [
+            prompt = [  
                 {"role": "system", "content": example["system_prompt"]},
                 {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])}
             ]
@@ -632,7 +633,7 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
         else:
             system = example["system_prompt"]
             question = example["question_template"].format(smiles=example["smiles"])
-            prompt_str = f"{system}\n\nUser: {question}\n\nAssistant: "
+            prompt_str = f"{system}\n\nuser: {question}\n\nassistant: "
     
     # Tokenize the prompt
     tokenized_output = tok(prompt_str, padding="max_length", truncation=True, max_length=max_len, return_tensors="np")
@@ -649,7 +650,7 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
     
     if is_train:
         # For training: find the answer span in the prompt
-        answer_text = str(example["answer"])
+        answer_text = str(example["assistant_template"].format(answer=example["answer"]))+"<|im_end|>"
         
         input_ids_list = input_ids.tolist() # Already 1D
         
@@ -868,3 +869,26 @@ def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any) ->
     response_texts = [seq.strip("\n") for seq in decoded_sequences]
 
     return response_texts
+
+class PrintFirstExampleCallback(TrainerCallback):
+    def __init__(self, tokenizer, train_dataset):
+        self.tokenizer = tokenizer
+        self.train_dataset = train_dataset
+        self.has_printed = False
+
+    def on_train_begin(self, args, state, control, **kwargs):
+        if not self.has_printed and len(self.train_dataset) > 0:
+            example = self.train_dataset[0]
+            input_ids = example['input_ids']
+            labels = example['labels']
+            try:
+                decoded_input = self.tokenizer.decode(input_ids, skip_special_tokens=True)
+            except Exception:
+                decoded_input = str(input_ids)
+            try:
+                decoded_labels = self.tokenizer.decode(labels, skip_special_tokens=True)
+            except Exception:
+                decoded_labels = str(labels)
+            print("\n[PrintFirstExampleCallback] Sample input:", decoded_input)
+            print("[PrintFirstExampleCallback] Expected output:", decoded_labels)
+            self.has_printed = True

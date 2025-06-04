@@ -13,7 +13,6 @@ from transformers import (
 )
 from accelerate import Accelerator
 
-
 accelerator = Accelerator()
 
 from llm.llm_apis import (
@@ -23,6 +22,7 @@ from llm.llm_apis import (
     show_examples,
     do_generation,
     PROCESSOR_CLASSES,
+    PrintFirstExampleCallback,
 )
 from typing import Any, Sequence, Dict
 
@@ -256,6 +256,7 @@ targs = Seq2SeqTrainingArguments(
 
 compute_metrics = compute_metrics_closure(tokenizer)
 
+
 trainer = Trainer(
     model=model,
     args=targs,
@@ -263,7 +264,9 @@ trainer = Trainer(
     eval_dataset=eval_tok_min,
     tokenizer=tokenizer,
     compute_metrics=compute_metrics,
+    callbacks=[PrintFirstExampleCallback(tokenizer, train_tok)],
 )
+
 
 logging.info("Starting training …")
 trainer.train()
