@@ -6,8 +6,8 @@
 #SBATCH --mail-user=lewis.geer@gmail.com
 #SBATCH --mail-type=all
 #SBATCH --ntasks-per-node=1
-#SBATCH -o logs/%x_%j.out
-#SBATCH -e logs/%x_%j.err
+#SBATCH -o /home1/10318/lyg/results/logs/%x_%j.out
+#SBATCH -e /home1/10318/lyg/results/logs/%x_%j.err
 # ----------------------------------------------------------
 
 source ./common.sh
