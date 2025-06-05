@@ -188,13 +188,14 @@ with accelerator.main_process_first():
         logging.info(f"Expanded test dataset from {len(test_raw)} to {len(expanded_test)} examples")
 
     # Process each Q&A pair
+    deletion_columns = ["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"]
     train_tok = expanded_train.map(
         lambda example: process_single_qa(
             tokenizer, example, args.max_length, is_train=True
         ),
         batched=False,
         num_proc=args.map_num_proc,
-        remove_columns=["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"]
+        remove_columns=deletion_columns
     )
     
     eval_tok = expanded_eval.map(
@@ -207,7 +208,7 @@ with accelerator.main_process_first():
     # create a minimal version of the eval dataset for training. Huggingface dataset iterators
     # lose the labels column if there are too many columns in the dataset, causing bizarrely
     # the user defined metric to not be installed.
-    eval_tok_min = eval_tok.remove_columns(["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"])
+    eval_tok_min = eval_tok.remove_columns(deletion_columns)
 
     test_tok = None
     if expanded_test:
@@ -221,7 +222,7 @@ with accelerator.main_process_first():
         # create a minimal version of the test dataset for training. Huggingface dataset iterators
         # lose the labels column if there are too many columns in the dataset, causing bizarrely
         # the user defined metric to not be installed.
-        test_tok_min = test_tok.remove_columns(["smiles", "question_id", "question_template", "answer", "assistant_template", "system_prompt"])
+        test_tok_min = test_tok.remove_columns(deletion_columns)
 
 # ───────── FREE large raw datasets to save RAM ─────────
 del train_raw, eval_raw, expanded_train
@@ -230,9 +231,9 @@ if test_raw:
 
 gc.collect()
 
-# if accelerator.is_main_process:
-#     val_preds = do_generation(args.max_new_tokens, tokenizer, model, eval_tok)
-#     show_examples(eval_tok, val_preds, n=10)
+if accelerator.is_main_process:
+    val_preds = do_generation(args.max_new_tokens, tokenizer, model, eval_tok)
+    show_examples(eval_tok, val_preds, n=10)
 
 # ───────── training setup ─────────
 targs = Seq2SeqTrainingArguments(
@@ -256,8 +257,29 @@ targs = Seq2SeqTrainingArguments(
 
 compute_metrics = compute_metrics_closure(tokenizer)
 
+# subclass trainer to use custom generation (instead of returning logits)
+# Seq2SeqTrainer does do generation if predict_with_generate=True, but it causes other problems
 
-trainer = Trainer(
+class GenTrainer(Trainer):
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        # 1️⃣ standard loss for logging
+        with torch.no_grad():
+            loss = model(**inputs).loss
+
+        # 2️⃣ your custom generation
+        gen = model.generate(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
+            max_new_tokens=args.max_new_tokens,
+        )
+
+        # pad to the same length so the Trainer can cat() tensors
+        # gen_padded = self._pad_tensors_to_max_len(gen, gen.max(dim=1).values.size(1))
+
+        labels = inputs["labels"]
+        return (loss, gen, labels)
+
+trainer = GenTrainer(
     model=model,
     args=targs,
     train_dataset=train_tok,

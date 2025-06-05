@@ -758,11 +758,11 @@ def _norm(s: str) -> str:
     # Extract all \boxed{...} answers
     #boxed = re.findall(r"\\boxed\{\{?(.*?)\}?\}", s)
     # Extract all <result>...</result> answers
-    results = re.findall(r"<extra_100>(.*?)</extra_101>", s)
+    results = re.findall(r"<\|extra_100\|>(.*?)<\|extra_101\|>", s)
     #values = boxed + results
     if results:
         # Join all extracted values with '|', strip whitespace and trailing periods
-        return '|'.join(v.strip().rstrip('.') for v in results)
+        return results[-1].strip().rstrip('.') if results else ''
 
     return s.strip().rstrip('.')
 
