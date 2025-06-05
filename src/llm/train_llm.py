@@ -160,7 +160,7 @@ eval_raw  = load_arrow_dataset(args.eval_file, args.eval_limit or None)
 test_raw  = load_arrow_dataset(args.test_file) if args.test_file else None
 
 # Register a mode to display example Q&A without training
-if args.show_examples:
+if args.show_examples and accelerator.is_main_process:
     logging.info("Showing example questions and answers")
     processor.show_examples(eval_raw, tokenizer, args.eval_limit)
     sys.exit(0)
@@ -297,18 +297,34 @@ logging.info("Generating validation predictions …")
 val_metrics = trainer.evaluate(eval_dataset=eval_tok_min)
 # labels = eval_tok["labels"]
 # val_metrics = compute_metrics((val_preds, np.array(labels)))
-logging.info("Validation metrics: %s", val_metrics)
-val_preds = do_generation(args.max_new_tokens, tokenizer, model, eval_tok_min)
 if accelerator.is_main_process:
+    logging.info("Validation metrics: %s", val_metrics)
+    val_preds = do_generation(args.max_new_tokens, tokenizer, model, eval_tok_min)
     show_examples(eval_tok, val_preds, n=10)
 
 if test_tok and test_tok is not None:
     test_metrics = trainer.evaluate(eval_dataset=test_tok_min)
-    logging.info("Test metrics: %s", test_metrics)
-
-    test_preds = do_generation(args.max_new_tokens, tokenizer, model, test_tok_min)
     if accelerator.is_main_process:
+        logging.info("Test metrics: %s", test_metrics)
+        test_preds = do_generation(args.max_new_tokens, tokenizer, model, test_tok_min)
         show_examples(test_tok, test_preds, n=10)
 
-trainer.save_model(str(Path(args.output_dir).expanduser()))
-logging.info("Model saved to %s", args.output_dir)
+if accelerator.is_main_process:
+    # Get back the bare model (not the DDP wrapper)
+    unwrapped_model = accelerator.unwrap_model(model)
+
+    OUTPUT_DIR = str(Path(args.output_dir).expanduser())
+    # Use the accelerator-aware save so that on multi-GPU runs
+    # the main process writes **once** and others do nothing.
+    unwrapped_model.save_pretrained(
+        OUTPUT_DIR,
+        save_function=accelerator.save,   # <- key line for sharded or zero-3 setups
+        safe_serialization=True           # optional: saves safetensors instead of bin
+    )
+
+    # Tokenizer: save only if you want a local copy
+    tokenizer.save_pretrained(OUTPUT_DIR)
+    logging.info("Model saved to %s", args.output_dir)
+
+# Let every rank wait until the save is finished
+accelerator.wait_for_everyone()
