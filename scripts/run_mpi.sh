@@ -28,11 +28,12 @@ export SCRIPT="../src/llm/train_llm.py"
 
 export ARGS="--max_records 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
---num_train_epochs 2 \
---eval_steps 10000 \
---eval_limit 10 \
+--num_train_epochs 4 \
+--eval_steps 1000 \
+--eval_limit 8 \
 --train_file ~/data/pubchem/arrow/cluster_6M_train.arrow \
 --eval_file ~/data/pubchem/arrow/cluster_6M_eval.arrow \
+--question_set molecular_properties \
 "
 
 export CMD="$LAUNCHER $SCRIPT $ARGS"

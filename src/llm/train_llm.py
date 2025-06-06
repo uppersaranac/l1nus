@@ -300,6 +300,8 @@ if test_tok_min is not None:
     test_metrics = trainer.evaluate(eval_dataset=test_tok_min)
     accelerator.print("Test metrics: %s", test_metrics)
 
+accelerator.wait_for_everyone()
+
 if accelerator.is_main_process:
     # Get back the bare model (not the DDP wrapper)
     unwrapped_model = accelerator.unwrap_model(model)
@@ -326,3 +328,6 @@ if accelerator.is_main_process:
     if test_tok_min is not None:
         test_preds = do_generation(args.max_new_tokens, tokenizer, unwrapped_model.eval(), test_tok_min)
         show_examples(test_tok, test_preds, n=10)
+
+accelerator.wait_for_everyone()
+accelerator.end_training()
