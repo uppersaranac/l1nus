@@ -13,8 +13,6 @@ from transformers import (
 )
 from accelerate import Accelerator
 
-accelerator = Accelerator()
-
 from llm.llm_apis import (
     load_arrow_dataset,
     process_single_qa,
@@ -82,6 +80,8 @@ and evaluate by *generation* (model sees only the question).
 """
 
 # ───────────────────────────── main ────────────────────────────────────
+accelerator = Accelerator()
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--train_file", type=str, default='~/data/pubchem/arrow/cluster_100k_train.arrow', help="Path to the training Arrow file.")
 parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/cluster_100k_eval.arrow', help="Path to the evaluation Arrow file.")
