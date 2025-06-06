@@ -293,21 +293,11 @@ trainer = GenTrainer(
 logging.info("Starting training …")
 trainer.train()
 
-logging.info("Generating validation predictions …")
 val_metrics = trainer.evaluate(eval_dataset=eval_tok_min)
-# labels = eval_tok["labels"]
-# val_metrics = compute_metrics((val_preds, np.array(labels)))
-if accelerator.is_main_process:
-    logging.info("Validation metrics: %s", val_metrics)
-    val_preds = do_generation(args.max_new_tokens, tokenizer, model, eval_tok_min)
-    show_examples(eval_tok, val_preds, n=10)
-
-if test_tok and test_tok is not None:
+accelerator.print("Validation metrics: %s", val_metrics)
+if test_tok_min is not None:
     test_metrics = trainer.evaluate(eval_dataset=test_tok_min)
-    if accelerator.is_main_process:
-        logging.info("Test metrics: %s", test_metrics)
-        test_preds = do_generation(args.max_new_tokens, tokenizer, model, test_tok_min)
-        show_examples(test_tok, test_preds, n=10)
+    accelerator.print("Test metrics: %s", test_metrics)
 
 if accelerator.is_main_process:
     # Get back the bare model (not the DDP wrapper)
@@ -324,7 +314,14 @@ if accelerator.is_main_process:
 
     # Tokenizer: save only if you want a local copy
     tokenizer.save_pretrained(OUTPUT_DIR)
-    logging.info("Model saved to %s", args.output_dir)
+    accelerator.print("Model saved to %s", args.output_dir)
 
-# Let every rank wait until the save is finished
-accelerator.wait_for_everyone()
+    # Let every rank wait until the save is finished
+    accelerator.wait_for_everyone()
+
+    val_preds = do_generation(args.max_new_tokens, tokenizer, unwrapped_model.eval(), eval_tok_min)
+    show_examples(eval_tok, val_preds, n=10)
+
+    if test_tok_min is not None:
+        test_preds = do_generation(args.max_new_tokens, tokenizer, unwrapped_model.eval(), test_tok_min)
+        show_examples(test_tok, test_preds, n=10)
