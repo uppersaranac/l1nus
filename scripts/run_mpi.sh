@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J train_llm_mpi           # Job name
 #SBATCH -t 36:00:00              # Wall time (1 hour)
-#SBATCH -N 2                    # Number of nodes
+#SBATCH -N 8                    # Number of nodes
 #SBATCH -p gh                    # GPU partition (modify as needed)
 #SBATCH --mail-user=lewis.geer@gmail.com
 #SBATCH --mail-type=all
@@ -28,11 +28,12 @@ export SCRIPT="../src/llm/train_llm.py"
 
 export ARGS="--max_records 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
---num_train_epochs 5 \
---eval_steps 2000 \
---eval_limit 50 \
+--num_train_epochs 4 \
+--eval_steps 1000 \
+--eval_limit 8 \
 --train_file ~/data/pubchem/arrow/cluster_6M_train.arrow \
 --eval_file ~/data/pubchem/arrow/cluster_6M_eval.arrow \
+--question_set molecular_properties \
 "
 
 export CMD="$LAUNCHER $SCRIPT $ARGS"

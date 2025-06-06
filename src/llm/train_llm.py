@@ -13,8 +13,6 @@ from transformers import (
 )
 from accelerate import Accelerator
 
-accelerator = Accelerator()
-
 from llm.llm_apis import (
     load_arrow_dataset,
     process_single_qa,
@@ -82,6 +80,8 @@ and evaluate by *generation* (model sees only the question).
 """
 
 # ───────────────────────────── main ────────────────────────────────────
+accelerator = Accelerator()
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--train_file", type=str, default='~/data/pubchem/arrow/cluster_100k_train.arrow', help="Path to the training Arrow file.")
 parser.add_argument("--eval_file", type=str, default='~/data/pubchem/arrow/cluster_100k_eval.arrow', help="Path to the evaluation Arrow file.")
@@ -211,6 +211,7 @@ with accelerator.main_process_first():
     eval_tok_min = eval_tok.remove_columns(deletion_columns)
 
     test_tok = None
+    test_tok_min = None
     if expanded_test:
         test_tok = expanded_test.map(
             lambda example: process_single_qa(
@@ -299,6 +300,8 @@ if test_tok_min is not None:
     test_metrics = trainer.evaluate(eval_dataset=test_tok_min)
     accelerator.print("Test metrics: %s", test_metrics)
 
+accelerator.wait_for_everyone()
+
 if accelerator.is_main_process:
     # Get back the bare model (not the DDP wrapper)
     unwrapped_model = accelerator.unwrap_model(model)
@@ -325,3 +328,6 @@ if accelerator.is_main_process:
     if test_tok_min is not None:
         test_preds = do_generation(args.max_new_tokens, tokenizer, unwrapped_model.eval(), test_tok_min)
         show_examples(test_tok, test_preds, n=10)
+
+accelerator.wait_for_everyone()
+accelerator.end_training()

@@ -26,11 +26,11 @@ export LAUNCHER="accelerate launch \
 
 export SCRIPT="../src/llm/train_llm.py"
 
-export ARGS="--max_records 0 \
+export ARGS="--max_records 1000 \
 --output_dir ~/results/$SLURM_JOB_ID \
 --num_train_epochs 1 \
---eval_steps 10000 \
---eval_limit 2 \
+--eval_steps 10 \
+--eval_limit 4 \
 --train_file ~/data/pubchem/arrow/cluster_100k_train.arrow \
 --eval_file ~/data/pubchem/arrow/cluster_100k_eval.arrow \
 "
