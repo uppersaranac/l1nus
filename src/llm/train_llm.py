@@ -211,6 +211,7 @@ with accelerator.main_process_first():
     eval_tok_min = eval_tok.remove_columns(deletion_columns)
 
     test_tok = None
+    test_tok_min = None
     if expanded_test:
         test_tok = expanded_test.map(
             lambda example: process_single_qa(
