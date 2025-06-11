@@ -797,13 +797,23 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             preds = preds[0]
         if preds.ndim == 3:
             preds = np.argmax(preds, axis=2)
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-        labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
-        decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-        decoded_preds = [_norm(p) for p in decoded_preds]
-        decoded_labels = [_norm(l) for l in decoded_labels]
-        compute_metrics.all_preds.extend(decoded_preds)
-        compute_metrics.all_labels.extend(decoded_labels)
+        try:
+            def filter_out_of_range(tokens, vocab_size, pad_token_id):
+                # Replace out-of-range tokens with pad_token_id
+                return [t if 0 <= t < vocab_size else pad_token_id for t in tokens]
+            # Filter out-of-range tokens for preds and labels
+            filtered_preds = [filter_out_of_range(seq, tokenizer.vocab_size, tokenizer.pad_token_id) for seq in preds]
+            labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
+            filtered_labels = [filter_out_of_range(seq, tokenizer.vocab_size, tokenizer.pad_token_id) for seq in labels]
+            decoded_preds = tokenizer.batch_decode(filtered_preds, skip_special_tokens=True)
+            decoded_labels = tokenizer.batch_decode(filtered_labels, skip_special_tokens=True)
+            decoded_preds = [_norm(p) for p in decoded_preds]
+            decoded_labels = [_norm(l) for l in decoded_labels]
+            compute_metrics.all_preds.extend(decoded_preds)
+            compute_metrics.all_labels.extend(decoded_labels)
+        except OverflowError as e:
+            print(f"OverflowError: {preds}")
+            pass
         if compute_result:
             # Compute metrics only on the final call
             exact_m = exact_match.compute(
