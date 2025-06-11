@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Dict, Type
 
 # Import implementations from existing module
-from llm_apis import (
+from llm.llm_apis import (
     QuestionSetProcessor,
     IUPACNamingProcessor,
     MolecularPropertiesProcessor,

@@ -79,12 +79,18 @@ def tokenise_split(
     max_label_len: int | None = 1024,
     is_train: bool = True,
     num_proc: int | None = None,
+    system_prompt: str | None = None,
 ) -> Dataset:
     """Apply *process_single_qa* to every example in *ds*."""
     logger.info("Tokenising %d examples (is_train=%s)…", len(ds), is_train)
     mapped = ds.map(
         lambda ex: process_single_qa(
-            tokenizer, ex, max_length, max_label_len=max_label_len, is_train=is_train
+            tokenizer,
+            ex,
+            max_length,
+            max_label_len=max_label_len,
+            is_train=is_train,
+            system_prompt_override=system_prompt,
         ),
         batched=False,
         num_proc=num_proc,
@@ -102,6 +108,7 @@ def tokenise_dataset_dict(
     max_length: int = 4096,
     max_label_len: int | None = 1024,
     num_proc: int | None = None,
+    system_prompt: str | None = None,
 ) -> Tuple[DatasetDict, DatasetDict]:
     """Return (full_dict, minimal_dict) after tokenisation.
 
@@ -111,7 +118,15 @@ def tokenise_dataset_dict(
     minimal_dict: Dict[str, Dataset] = {}
     for split, ds in dsdict.items():
         is_train = split == "train"
-        tok = tokenise_split(ds, tokenizer, max_length, max_label_len, is_train, num_proc)
+        tok = tokenise_split(
+            ds,
+            tokenizer,
+            max_length,
+            max_label_len,
+            is_train,
+            num_proc,
+            system_prompt=system_prompt,
+        )
         full_dict[split] = tok
         # For non-train we keep full but create minimal too
         minimal_dict[split] = tok.remove_columns([c for c in ds.column_names if c not in {"labels", "input_ids", "attention_mask"}])

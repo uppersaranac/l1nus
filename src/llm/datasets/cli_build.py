@@ -57,12 +57,26 @@ def main() -> None:
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
+    # Attempt to read system_prompt from YAML with same stem as input questions
+    system_prompt: str | None = None
+    try:
+        stem = q_path.stem  # e.g. molecular_properties_questions → molecular_properties
+        yaml_path = q_path.with_name(stem + ".yaml")
+        if yaml_path.exists():
+            import yaml as _yaml
+            with open(yaml_path, "r", encoding="utf-8") as _f:
+                _cfg = _yaml.safe_load(_f)
+            system_prompt = _cfg.get("system_prompt")
+    except Exception as _exc:
+        logger.debug("Could not load system_prompt from YAML: %s", _exc)
+
     full_tok, minimal_tok = tokenise_dataset_dict(
         split_ds,
         tokenizer,
         max_length=args.max_length,
         max_label_len=args.max_label_len,
         num_proc=args.num_proc,
+        system_prompt=system_prompt,
     )
 
     logger.info("Saving tokenised datasets to %s", out_dir)

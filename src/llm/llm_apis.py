@@ -593,7 +593,14 @@ def load_arrow_dataset(path: str, limit: Optional[int] = None) -> Dataset:
     return ds
 
 
-def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label_len: int = None, is_train: bool = True) -> Dict[str, Any]:
+def process_single_qa(
+    tok: Any,
+    example: Dict[str, Any],
+    max_len: int,
+    max_label_len: int | None = None,
+    is_train: bool = True,
+    system_prompt_override: str | None = None,
+) -> Dict[str, Any]:
     """
     Process a single question-answer pair from the expanded dataset.
     
@@ -602,6 +609,9 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
     :param max_len: Maximum length for the input
     :param max_label_len: Maximum length for the label (only used for eval)
     :param is_train: Whether this is for training or evaluation
+    :param system_prompt_override: Optional system prompt string. If provided, this
+        is used instead of ``example['system_prompt']`` (which may be absent when
+        loading datasets created without the system_prompt column).
     :return: Dictionary with tokenized input_ids, attention_mask, and labels
     """
     # Build the prompt
@@ -610,14 +620,14 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
         if hasattr(tok, 'apply_chat_template'):
             # Use chat template if available
             prompt = [
-                {"role": "system", "content": example["system_prompt"]},
+                {"role": "system", "content": system_prompt_override if system_prompt_override is not None else example["system_prompt"]},
                 {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])},
                 {"role": "assistant", "content": example["assistant_template"].format(answer=example["answer"])}
             ]
             prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
         else:
             # Fallback for models without chat templates
-            system = example["system_prompt"]
+            system = system_prompt_override if system_prompt_override is not None else example["system_prompt"]
             question = example["question_template"].format(smiles=example["smiles"])
             answer = example["assistant_template"].format(answer=example["answer"])
             prompt_str = f"{system}\n\nuser: {question}\n\nassistant: {answer}"
@@ -625,13 +635,13 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
         # For evaluation, only include the question (no answer)
         if hasattr(tok, 'apply_chat_template'):
             prompt = [  
-                {"role": "system", "content": example["system_prompt"]},
+                {"role": "system", "content": system_prompt_override if system_prompt_override is not None else example.get("system_prompt", "")},
                 {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])}
             ]
             prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, 
                                                 tokenize=False, enable_thinking=False)
         else:
-            system = example["system_prompt"]
+            system = system_prompt_override if system_prompt_override is not None else example.get("system_prompt", "")
             question = example["question_template"].format(smiles=example["smiles"])
             prompt_str = f"{system}\n\nuser: {question}\n\nassistant: "
     
@@ -650,7 +660,7 @@ def process_single_qa(tok: Any, example: Dict[str, Any], max_len: int, max_label
     
     if is_train:
         # For training: find the answer span in the prompt
-        answer_text = str(example["assistant_template"].format(answer=example["answer"]))+"<|im_end|>"
+        answer_text = str(example["assistant_template"].format(answer=example["answer"]))+""
         
         input_ids_list = input_ids.tolist() # Already 1D
         

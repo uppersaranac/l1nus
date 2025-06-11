@@ -15,9 +15,15 @@ import logging
 from pathlib import Path
 from typing import Tuple
 
-import pandas as pd
+import pyarrow as pa
+import pyarrow.csv as pacsv
+import pyarrow.parquet as pq
+import pyarrow.json as pajson
+from collections import Counter
 
-from .generators import GenerationConfig, QuestionGenerator
+from llm.questions.generators import GenerationConfig, QuestionGenerator
+from llm.questions.processors import PROCESSOR_CLASSES
+from llm.llm_apis import QUESTION_SETS
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -27,21 +33,36 @@ logging.basicConfig(level=logging.INFO)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _load_dataframe(path: Path, limit: int | None = None) -> pd.DataFrame:
-    """Load tabular data using pandas based on file extension."""
+def _load_table(path: Path, limit: int | None = None) -> pa.Table:
+    """Load tabular data as a **memory-mapped** Arrow Table.
+
+    Supported extensions:
+      • .arrow   – Arrow IPC random-access file (zero-copy mmap)
+      • .parquet – Parquet file
+      • .csv     – Comma-separated values
+      • .tsv     – Tab-separated values
+      • .jsonl/.json – Newline-delimited JSON
+    """
     suffix = path.suffix.lower()
-    if suffix in {".csv", ".tsv"}:
-        df = pd.read_csv(path, sep="," if suffix == ".csv" else "\t")
+
+    if suffix == ".arrow":
+        # Zero-copy read via memory mapping
+        mmap = pa.memory_map(str(path), "r")
+        reader = pa.ipc.open_stream(mmap)
+        table = reader.read_all()
+    elif suffix == ".parquet":
+        table = pq.read_table(str(path))
+    elif suffix in {".csv", ".tsv"}:
+        parse_opts = pacsv.ParseOptions(delimiter="," if suffix == ".csv" else "\t")
+        table = pacsv.read_csv(str(path), parse_options=parse_opts)
     elif suffix in {".jsonl", ".json"}:
-        df = pd.read_json(path, lines=True)
-    elif suffix in {".parquet"}:
-        df = pd.read_parquet(path)
+        table = pajson.read_json(str(path), read_options=pajson.ReadOptions(newlines_in_values=False))
     else:
         raise ValueError(f"Unsupported input format: {suffix}")
 
     if limit is not None:
-        df = df.head(limit)
-    return df
+        table = table.slice(0, limit)
+    return table
 
 
 def _parse_args() -> argparse.Namespace:
@@ -57,63 +78,76 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-def _assign_splits(df, valid_frac: float, test_frac: float, seed: int):
+def _assign_splits(table: pa.Table, valid_frac: float, test_frac: float, seed: int) -> pa.Table:
     import numpy as np
     assert valid_frac + test_frac < 1.0, "Split fractions too large"
     rng = np.random.default_rng(seed)
     choices = rng.choice(
         ["test", "valid", "train"],
-        size=len(df),
+        size=table.num_rows,
         p=[test_frac, valid_frac, 1.0 - valid_frac - test_frac],
     )
-    df["split"] = choices
-    return df
+    split_arr = pa.array(choices, type=pa.string())
+    return table.append_column("split", split_arr)
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main() -> None:
     args = _parse_args()
-    input_path = Path(args.input)
-    output_path = Path(args.output)
+    input_path = Path(args.input).expanduser()
+    output_path = Path(args.output).expanduser()
 
     logger.info("Loading raw data from %s", input_path)
-    df = _load_dataframe(input_path, limit=args.limit)
-    logger.info("Loaded %d records", len(df))
+    table = _load_table(input_path, limit=args.limit)
+    logger.info("Loaded %d records", table.num_rows)
 
     logger.info("Parsing YAML config %s", args.config)
     cfg = GenerationConfig.from_yaml(args.config)
 
-    # If user specifies a built-in question set, compute answers using its processor
-    if args.question_set:
+    # Determine which QuestionSetProcessor (if any) to apply
+    from llm.questions.processors import PROCESSOR_CLASSES
+    qs_name: str | None = args.question_set
+    if qs_name is None:
+        # Infer from YAML filename, e.g. 'configs/molecular_properties.yaml'
+        cfg_stem = Path(args.config).stem
+        if cfg_stem in PROCESSOR_CLASSES:
+            qs_name = cfg_stem
+
+    if qs_name:
         try:
-            from llm.questions.processors import PROCESSOR_CLASSES
-            proc_cls = PROCESSOR_CLASSES[args.question_set]
+            proc_cls = PROCESSOR_CLASSES[qs_name]
         except KeyError:
-            raise SystemExit(f"Unknown question set: {args.question_set}")
+            raise SystemExit(f"Unknown question set: {qs_name}")
 
         proc = proc_cls()
-        # Prepare answers expects a dataset-like dict with list values
-        ds_like = {col: df[col].tolist() for col in df.columns}
+        # Create dataset-like mapping (lists) from Arrow columns
+        ds_like = {col: table.column(col).to_pylist() for col in table.column_names}
         answers = proc.prepare_answers(ds_like)
-        # Add each answer list as a new column in the dataframe
+        # Append each answer list as a new Arrow column (overwrite if exists)
         for col, values in answers.items():
-            df[col] = values
-        logger.info("Computed answer columns via %s", args.question_set)
+            if col in table.column_names:
+                table = table.remove_column(table.column_names.index(col))
+            table = table.append_column(col, pa.array(values))
+        logger.info("Computed answer columns via %s", qs_name)
 
-    df = _assign_splits(df, args.valid_frac, args.test_frac, args.seed)
+        # Store system_prompt in generator config for later retrieval
+        cfg.system_prompt = QUESTION_SETS[qs_name]["system_prompt"]
+
+    table = _assign_splits(table, args.valid_frac, args.test_frac, args.seed)
+    split_counts = Counter(table.column("split").to_pylist())
     logger.info(
         "Split counts – train: %d, valid: %d, test: %d",
-        (df["split"] == "train").sum(),
-        (df["split"] == "valid").sum(),
-        (df["split"] == "test").sum(),
+        split_counts.get("train", 0),
+        split_counts.get("valid", 0),
+        split_counts.get("test", 0),
     )
 
     gen = QuestionGenerator(cfg)
     logger.info("Generating questions…")
-    n_written = gen.generate_jsonl(df, output_path)
+    n_written = gen.generate_jsonl(table, output_path)
     logger.info("Wrote %d Q-A records to %s", n_written, output_path)
 
 

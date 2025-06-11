@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Iterator, Sequence
 
 import yaml
-import pandas as pd
+import pyarrow as pa
 
 from .templates import QuestionTemplate, template_from_dict
 
@@ -46,21 +46,28 @@ class QuestionGenerator:
     # ------------------------------------------------------------------
     # PUBLIC API
     # ------------------------------------------------------------------
-    def generate(self, df: pd.DataFrame) -> Iterator[Dict[str, Any]]:
-        """Yield a dict per Q-A pair.
+    def generate(self, table: pa.Table) -> Iterator[Dict[str, Any]]:
+        """Yield a dict per Q-A pair from an Arrow Table.
 
         Each output dict contains:
             question      – rendered user prompt
             answer        – rendered assistant answer
             question_id   – template id
             assistant_template – original assistant template string
-            system_prompt – from config.system_prompt
             metadata      – original record as dict (caller can drop large cols)
         """
-        for _, row in df.iterrows():
-            record = row.to_dict()
+        # Iterate row-by-row without converting full table to Python objects
+        for i in range(table.num_rows):
+            # Slice returns a Table with 1 row; convert to plain dict
+            record = {k: v[0] for k, v in table.slice(i, 1).to_pydict().items()}
             for q_tmpl in self.config.question_templates:
-                mapping = record | {"answer": record.get(q_tmpl.id)}  # answer_column default to id
+                # Resolve answer value automatically; allow custom mapping per template
+                answer_val = record.get(q_tmpl.id)
+                # Special-case common chemistry field names
+                if answer_val is None and q_tmpl.id == "iupac_name":
+                    answer_val = record.get("iupac")
+
+                mapping = record | {"answer": answer_val}
                 try:
                     question_text = q_tmpl.render_question(record)
                     answer_text = q_tmpl.render_answer(mapping)
@@ -68,24 +75,26 @@ class QuestionGenerator:
                     logger.debug("Skipping template %s due to missing key: %s", q_tmpl.id, exc)
                     continue
 
+                # Exclude split from metadata & top-level output
+                metadata = {k: v for k, v in record.items() if k != "split"}
+
                 yield {
                     "question": question_text,
                     "answer": answer_text,
                     "question_id": q_tmpl.id,
                     "assistant_template": q_tmpl.assistant_template,
-                    "system_prompt": self.config.system_prompt,
-                    "metadata": record,
                     "split": record.get("split", "train"),
+                    "metadata": metadata,
                 }
 
     # ------------------------------------------------------------------
     # CONVENIENCE HELPERS
     # ------------------------------------------------------------------
-    def generate_jsonl(self, df: pd.DataFrame, out_path: str | Path) -> int:
-        """Write JSONL file. Returns number of examples written."""
+    def generate_jsonl(self, table: pa.Table, out_path: str | Path) -> int:
+        """Write JSONL file from an Arrow Table. Returns number of examples written."""
         n = 0
         with open(out_path, "w", encoding="utf-8") as f:
-            for qa in self.generate(df):
+            for qa in self.generate(table):
                 json.dump(qa, f, ensure_ascii=False)
                 f.write("\n")
                 n += 1
