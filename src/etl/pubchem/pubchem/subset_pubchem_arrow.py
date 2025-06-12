@@ -4,6 +4,7 @@ import pyarrow.compute as pc
 import sys
 import argparse
 from pathlib import Path
+import numpy as np
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate questions JSONL from raw data + YAML config")
@@ -29,15 +30,15 @@ def _assign_splits(table: pa.Table, valid_frac: float, test_frac: float, seed: i
 
 def main() -> None:
     args = _parse_args()
-    ARROW_PATH = Path(args.input).expanduser()
-    OUTPUT_PATH = Path(args.output).expanduser()
-    CID_TXT_PATH = Path(args.filter).expanduser()
+    ARROW_PATH = str(Path(args.input).expanduser())
+    OUTPUT_PATH = str(Path(args.output).expanduser())
+    CID_TXT_PATH = str(Path(args.filter).expanduser())
 
     # 1. Load CIDs from text file
     cid_set = None
     if CID_TXT_PATH != '':
         with open(CID_TXT_PATH, "r") as f:
-            cid_set = set(line.strip() for line in f if line.strip())
+            cid_set = set(int(line.strip()) for line in f if line.strip())
 
     # 2. Load Arrow table (random access, memory-mapped)
     reader = ipc.RecordBatchFileReader(pa.memory_map(ARROW_PATH, "rb"))
@@ -49,15 +50,13 @@ def main() -> None:
     cid_col = table.column("cid")
     # Convert Arrow column to Python strings for set lookup
     if cid_set is not None:
-        if pa.types.is_integer(cid_col.type):
-            mask = [str(cid_col[i].as_py()) in cid_set for i in range(len(cid_col))]
-        else:
-            mask = [cid_col[i].as_py() in cid_set for i in range(len(cid_col))]
-        table = table.filter(pa.array(mask))
+        mask = np.zeros(len(cid_col), dtype=bool)
+        mask[list(cid_set)] = True
+        table = table.filter(mask)
 
     # ignore records with empty IUPAC names
     if table.column("iupac"):
-        table = table.filter(pc.equal(table['iupac'], ''))
+        table = table.filter(pc.invert(pc.equal(table['iupac'], '')))
 
     table = _assign_splits(table, args.valid_frac, args.test_frac, args.seed)
 
@@ -67,3 +66,7 @@ def main() -> None:
             writer.write_table(table)
 
     print(f"Wrote subset to {OUTPUT_PATH} with {table.num_rows} rows.")
+
+if __name__ == "__main__":
+    main()
+    print("Done!")
