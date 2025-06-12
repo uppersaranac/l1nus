@@ -48,6 +48,7 @@ def _load_table(path: Path, limit: int | None = None) -> pa.Table:
     if suffix == ".arrow":
         # Zero-copy read via memory mapping
         mmap = pa.memory_map(str(path), "r")
+        # TODO: read random-access Arrow file
         reader = pa.ipc.open_stream(mmap)
         table = reader.read_all()
     elif suffix == ".parquet":
@@ -76,19 +77,6 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--test-frac", type=float, default=0.025, help="Test split fraction (before expansion)")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
-
-
-def _assign_splits(table: pa.Table, valid_frac: float, test_frac: float, seed: int) -> pa.Table:
-    import numpy as np
-    assert valid_frac + test_frac < 1.0, "Split fractions too large"
-    rng = np.random.default_rng(seed)
-    choices = rng.choice(
-        ["test", "valid", "train"],
-        size=table.num_rows,
-        p=[test_frac, valid_frac, 1.0 - valid_frac - test_frac],
-    )
-    split_arr = pa.array(choices, type=pa.string())
-    return table.append_column("split", split_arr)
 
 
 # ---------------------------------------------------------------------------
@@ -136,14 +124,6 @@ def main() -> None:
         # Store system_prompt in generator config for later retrieval
         cfg.system_prompt = QUESTION_SETS[qs_name]["system_prompt"]
 
-    table = _assign_splits(table, args.valid_frac, args.test_frac, args.seed)
-    split_counts = Counter(table.column("split").to_pylist())
-    logger.info(
-        "Split counts – train: %d, valid: %d, test: %d",
-        split_counts.get("train", 0),
-        split_counts.get("valid", 0),
-        split_counts.get("test", 0),
-    )
 
     gen = QuestionGenerator(cfg)
     logger.info("Generating questions…")
