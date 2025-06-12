@@ -27,6 +27,7 @@ class GenerationConfig:
     """Parsed YAML configuration container."""
 
     system_prompt: str
+    question_set: str
     question_templates: List[QuestionTemplate]
 
     @classmethod
@@ -34,7 +35,7 @@ class GenerationConfig:
         with open(path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         q_tmpls = [template_from_dict(d) for d in cfg["questions"]]
-        return cls(system_prompt=cfg["system_prompt"], question_templates=q_tmpls)
+        return cls(system_prompt=cfg["system_prompt"], question_set=cfg['question_set'], question_templates=q_tmpls)
 
 
 class QuestionGenerator:

@@ -1,6 +1,8 @@
 # Configuration for molecular property counting questions
 system_prompt: "Do not think. Place the answer between <|extra_100|> and <|extra_101|>. The answer should be a number."
 
+question_set: molecular_properties
+
 questions:
   - id: carbon_count
     user_template: "How many carbon atoms are in the molecule {smiles}?"

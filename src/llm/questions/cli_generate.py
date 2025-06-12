@@ -13,13 +13,11 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from typing import Tuple
 
 import pyarrow as pa
 import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
 import pyarrow.json as pajson
-from collections import Counter
 
 from llm.questions.generators import GenerationConfig, QuestionGenerator
 from llm.questions.processors import PROCESSOR_CLASSES
@@ -49,7 +47,7 @@ def _load_table(path: Path, limit: int | None = None) -> pa.Table:
         # Zero-copy read via memory mapping
         mmap = pa.memory_map(str(path), "r")
         # TODO: read random-access Arrow file
-        reader = pa.ipc.open_stream(mmap)
+        reader = pa.ipc.RecordBatchFileReader(mmap)
         table = reader.read_all()
     elif suffix == ".parquet":
         table = pq.read_table(str(path))
@@ -68,14 +66,11 @@ def _load_table(path: Path, limit: int | None = None) -> pa.Table:
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate questions JSONL from raw data + YAML config")
-    p.add_argument("--input", required=True, help="Path to raw tabular file (csv, tsv, jsonl, parquet)")
+    p.add_argument("--input", required=True, help="Path to raw tabular file (csv, tsv, jsonl, parquet, arrow)")
     p.add_argument("--config", required=True, help="YAML file describing question templates and system_prompt")
     p.add_argument("--output", required=True, help="Destination JSONL file (one Q-A per line)")
     p.add_argument("--limit", type=int, default=None, help="Optionally limit number of raw records for quick runs")
-    p.add_argument("--question-set", type=str, default=None, help="Name of predefined QuestionSetProcessor to compute answers (e.g., 'molecular_properties')")
-    p.add_argument("--valid-frac", type=float, default=0.025, help="Validation split fraction (before expansion)")
-    p.add_argument("--test-frac", type=float, default=0.025, help="Test split fraction (before expansion)")
-    p.add_argument("--seed", type=int, default=42)
+
     return p.parse_args()
 
 
@@ -97,7 +92,7 @@ def main() -> None:
 
     # Determine which QuestionSetProcessor (if any) to apply
     from llm.questions.processors import PROCESSOR_CLASSES
-    qs_name: str | None = args.question_set
+    qs_name: str | None = cfg.question_set
     if qs_name is None:
         # Infer from YAML filename, e.g. 'configs/molecular_properties.yaml'
         cfg_stem = Path(args.config).stem

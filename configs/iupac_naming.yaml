@@ -1,6 +1,8 @@
 # Configuration for the IUPAC naming question generator
 system_prompt: "Do not think. Place the answer between <|extra_100|> and <|extra_101|>."
 
+question_set: iupac_naming
+
 questions:
   - id: iupac_name
     user_template: "Use the IUPAC naming rules to name the molecule {smiles}."

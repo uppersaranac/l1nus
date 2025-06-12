@@ -1,6 +1,8 @@
 # Configuration for the comprehensive all-properties question
 system_prompt: "Do not think. Put the answers in <|extra_100|> and <|extra_101|>."
 
+question_set: all_properties
+
 questions:
   - id: all_properties
     user_template: "Analyze the following molecular properties for the molecule {smiles}: carbon atoms, nitrogen atoms, oxygen atoms, sulfur atoms, phosphorus atoms, chlorine atoms, fluorine atoms, rings, aromatic rings, double bonds, triple bonds, stereo double bonds, stereocenters, and the IUPAC name. Provide a comprehensive report."
