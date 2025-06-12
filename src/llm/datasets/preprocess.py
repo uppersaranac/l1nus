@@ -14,7 +14,7 @@ import datasets as hfds
 from datasets import Dataset, DatasetDict
 from transformers import AutoTokenizer
 
-from llm_apis import process_single_qa  # reuse existing logic
+from llm.llm_apis import process_single_qa  # reuse existing logic
 
 logger = logging.getLogger(__name__)
 
@@ -28,25 +28,6 @@ def load_questions_jsonl(path: str | Path) -> Dataset:
     ds = hfds.load_dataset("json", data_files=str(path), split="train")
     logger.info("Loaded %d Q-A records from %s", len(ds), path)
     return ds
-
-
-def split_dataset(ds: Dataset, valid_frac: float = 0.025, test_frac: float = 0.025, seed: int = 42) -> DatasetDict:
-    """Split dataset into train/valid/test by fractions (random shuffle)."""
-    assert valid_frac + test_frac < 1.0, "Split fractions too large"
-    ds = ds.shuffle(seed=seed)
-    n = len(ds)
-    test_size = int(n * test_frac)
-    valid_size = int(n * valid_frac)
-    train_size = n - test_size - valid_size
-    train_ds, valid_ds, test_ds = hfds.dataset_dict.Dataset.from_dict({}), None, None  # placeholder
-    if test_size > 0:
-        test_ds = ds.select(range(test_size))
-    if valid_size > 0:
-        valid_ds = ds.select(range(test_size, test_size + valid_size))
-    train_ds = ds.select(range(test_size + valid_size, n))
-    splits = {"train": train_ds, "valid": valid_ds, "test": test_ds}
-    # Remove None splits
-    return DatasetDict({k: v for k, v in splits.items() if v is not None})
 
 
 # ---------------------------------------------------------------------------

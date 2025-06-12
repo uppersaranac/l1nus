@@ -50,8 +50,6 @@ def main() -> None:
     ds = load_questions_jsonl(q_path)
     if "split" in ds.column_names:
         split_ds = split_by_column(ds)
-    else:
-        split_ds = split_dataset(ds, valid_frac=args.valid_frac, test_frac=args.test_frac)
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     tokenizer.padding_side = "left"
