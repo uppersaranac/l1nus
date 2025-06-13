@@ -263,22 +263,30 @@ compute_metrics = compute_metrics_closure(tokenizer)
 
 class GenTrainer(Trainer):
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
-        # 1️⃣ standard loss for logging
+        inputs = self._prepare_inputs(inputs)
         with torch.no_grad():
             loss = model(**inputs).loss
 
-        # 2️⃣ your custom generation
         gen = model.generate(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             max_new_tokens=args.max_new_tokens,
         )
 
-        # pad to the same length so the Trainer can cat() tensors
-        # gen_padded = self._pad_tensors_to_max_len(gen, gen.max(dim=1).values.size(1))
+        gen = self._pad_tensors_to_max_len(gen, gen.shape[1])
+        labels = self._pad_tensors_to_max_len(inputs["labels"], gen.shape[1])
 
-        labels = inputs["labels"]
         return (loss, gen, labels)
+    
+    def _pad_tensors_to_max_len(self, tensor, max_length):
+        # pad to the right with pad_token_id (or -100 for labels)
+        pad_token_id = self.tokenizer.pad_token_id if hasattr(self, "tokenizer") else 0
+        pad_value = pad_token_id if tensor.dim() > 1 else -100
+
+        padded = torch.full((tensor.shape[0], max_length), pad_value, dtype=tensor.dtype, device=tensor.device)
+        padded[:, :tensor.shape[1]] = tensor
+        return padded
+
 
 trainer = GenTrainer(
     model=model,
