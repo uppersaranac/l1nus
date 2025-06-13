@@ -4,7 +4,6 @@ import pyarrow.compute as pc
 import sys
 import argparse
 from pathlib import Path
-import numpy as np
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate questions JSONL from raw data + YAML config")
@@ -47,11 +46,9 @@ def main() -> None:
     # 3. Subset table by CIDs
     if "cid" not in table.column_names:
         sys.exit("Error: 'cid' column not found in Arrow table.")
-    cid_col = table.column("cid")
     # Convert Arrow column to Python strings for set lookup
     if cid_set is not None:
-        mask = np.zeros(len(cid_col), dtype=bool)
-        mask[list(cid_set)] = True
+        mask = pc.is_in(table['cid'],pa.array(list(cid_set)))
         table = table.filter(mask)
 
     # ignore records with empty IUPAC names
@@ -60,6 +57,10 @@ def main() -> None:
 
     table = _assign_splits(table, args.valid_frac, args.test_frac, args.seed)
 
+    # sort the table by the number of atoms as that will give easier examples first
+    # also sort by cid so better annotated cids are picked first
+    table = table.sort_by([('num_atoms','ascending'),('cid','ascending')])
+    
     # 4. Write subset to Arrow file (random access format)
     with pa.OSFile(OUTPUT_PATH, "wb") as sink:
         with ipc.new_file(sink, table.schema) as writer:
