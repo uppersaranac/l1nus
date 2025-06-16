@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 def load_questions_jsonl(path: str | Path) -> Dataset:
     """Load the JSONL file produced by *cli_generate.py* into a HF Dataset."""
-    ds = hfds.load_dataset("json", data_files=str(path), split="train")
+    # the split argument is set to load all of the data (train, valid, test) into a flat Dataset.
+    ds = hfds.load_dataset("json", data_files=str(path), split="train") 
     logger.info("Loaded %d Q-A records from %s", len(ds), path)
     return ds
 
@@ -110,5 +111,5 @@ def tokenise_dataset_dict(
         )
         full_dict[split] = tok
         # For non-train we keep full but create minimal too
-        minimal_dict[split] = tok.remove_columns([c for c in ds.column_names if c not in {"labels", "input_ids", "attention_mask"}])
+        minimal_dict[split] = tok.remove_columns([c for c in tok.column_names if c not in {"labels", "input_ids", "attention_mask"}])
     return DatasetDict(full_dict), DatasetDict(minimal_dict)

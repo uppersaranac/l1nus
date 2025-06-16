@@ -15,14 +15,13 @@ import logging
 from pathlib import Path
 
 from transformers import AutoTokenizer
-from datasets import DatasetDict
 
-from .preprocess import (
+from llm.datasets.preprocess import (
     load_questions_jsonl,
-    split_dataset,
     split_by_column,
     tokenise_dataset_dict,
 )
+from llm.questions.generators import GenerationConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,10 +32,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--questions", required=True, help="Path to questions.jsonl (from cli_generate)")
     p.add_argument("--tokenizer", required=True, help="HF tokenizer name/path")
     p.add_argument("--output", required=True, help="Output directory to write dataset files (saved as HF Arrow)")
+    p.add_argument("--config", required=True, help="YAML file describing question templates and system_prompt")
     p.add_argument("--max-length", type=int, default=4096, help="Max prompt length")
     p.add_argument("--max-label-len", type=int, default=1024)
-    p.add_argument("--valid-frac", type=float, default=0.025)
-    p.add_argument("--test-frac", type=float, default=0.025)
     p.add_argument("--num-proc", type=int, default=None, help="Parallelism for .map()")
     return p.parse_args()
 
@@ -56,17 +54,9 @@ def main() -> None:
     tokenizer.pad_token = tokenizer.eos_token
 
     # Attempt to read system_prompt from YAML with same stem as input questions
-    system_prompt: str | None = None
-    try:
-        stem = q_path.stem  # e.g. molecular_properties_questions → molecular_properties
-        yaml_path = q_path.with_name(stem + ".yaml")
-        if yaml_path.exists():
-            import yaml as _yaml
-            with open(yaml_path, "r", encoding="utf-8") as _f:
-                _cfg = _yaml.safe_load(_f)
-            system_prompt = _cfg.get("system_prompt")
-    except Exception as _exc:
-        logger.debug("Could not load system_prompt from YAML: %s", _exc)
+    cfg = GenerationConfig.from_yaml(args.config)
+
+    system_prompt: str | None = cfg.system_prompt
 
     full_tok, minimal_tok = tokenise_dataset_dict(
         split_ds,

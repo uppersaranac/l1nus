@@ -621,14 +621,14 @@ def process_single_qa(
             # Use chat template if available
             prompt = [
                 {"role": "system", "content": system_prompt_override if system_prompt_override is not None else example["system_prompt"]},
-                {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])},
+                {"role": "user", "content": example["question_template"].format(smiles=example['metadata']["smiles"])},
                 {"role": "assistant", "content": example["assistant_template"].format(answer=example["answer"])}
             ]
             prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
         else:
             # Fallback for models without chat templates
             system = system_prompt_override if system_prompt_override is not None else example["system_prompt"]
-            question = example["question_template"].format(smiles=example["smiles"])
+            question = example["question_template"].format(smiles=example['metadata']["smiles"])
             answer = example["assistant_template"].format(answer=example["answer"])
             prompt_str = f"{system}\n\nuser: {question}\n\nassistant: {answer}"
     else:
@@ -636,13 +636,13 @@ def process_single_qa(
         if hasattr(tok, 'apply_chat_template'):
             prompt = [  
                 {"role": "system", "content": system_prompt_override if system_prompt_override is not None else example.get("system_prompt", "")},
-                {"role": "user", "content": example["question_template"].format(smiles=example["smiles"])}
+                {"role": "user", "content": example["question_template"].format(smiles=example['metadata']["smiles"])}
             ]
             prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, 
                                                 tokenize=False, enable_thinking=False)
         else:
             system = system_prompt_override if system_prompt_override is not None else example.get("system_prompt", "")
-            question = example["question_template"].format(smiles=example["smiles"])
+            question = example["question_template"].format(smiles=example['metadata']["smiles"])
             prompt_str = f"{system}\n\nuser: {question}\n\nassistant: "
     
     # Tokenize the prompt

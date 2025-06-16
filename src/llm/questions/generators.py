@@ -83,6 +83,7 @@ class QuestionGenerator:
                     "question": question_text,
                     "answer": answer_text,
                     "question_id": q_tmpl.id,
+                    "question_template": q_tmpl.user_template,
                     "assistant_template": q_tmpl.assistant_template,
                     "split": record.get("split", "train"),
                     "metadata": metadata,
