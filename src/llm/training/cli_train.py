@@ -20,6 +20,7 @@ from transformers import (
     get_scheduler,
 )
 from accelerate import Accelerator, DistributedDataParallelKwargs
+from tqdm import tqdm
 
 
 from llm_apis import compute_metrics_closure, do_generation
@@ -46,6 +47,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--max_new_tokens", type=int, default=64)
     p.add_argument("--num_example_preds", type=int, default=3, help="Number of example predictions to log during evaluation")
     p.add_argument("--model_dtype", type=str, default="bfloat16", choices=["float16", "bfloat16", "float32"])
+    p.add_argument("--no_tqdm", action="store_true", help="Disable tqdm progress bars.")
     return p.parse_args()
 
 
@@ -170,9 +172,13 @@ def main() -> None:
     # ---------------- training loop ----------------
     global_step = 0
     best_exact = -1.0
-    for epoch in range(args.num_train_epochs):
+    for epoch in (tqdm(range(args.num_train_epochs), desc="Epoch", disable=args.no_tqdm) if not args.no_tqdm else range(args.num_train_epochs)):
         model.train()
-        for batch in train_loader:
+        train_iter = train_loader
+        if not args.no_tqdm:
+            train_iter = tqdm(train_loader, desc=f"Train (epoch {epoch+1})", leave=False)
+        last_loss = None
+        for batch in train_iter:
             with accelerator.accumulate(model):
                 outputs = model(
                     input_ids=batch["input_ids"],
@@ -186,12 +192,20 @@ def main() -> None:
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
+            last_loss = loss.item()
+            if not args.no_tqdm and hasattr(train_iter, 'set_postfix'):
+                train_iter.set_postfix(loss=f"{last_loss:.4f}")
+
             # ------------ logging & eval -------------
             if global_step % args.logging_steps == 0 and accelerator.is_main_process:
-                logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, loss.item())
+                logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, last_loss)
 
             if global_step % args.eval_steps == 0 and global_step != 0:
-                _evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
+                eval_metrics = _evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
+                if not args.no_tqdm and hasattr(train_iter, 'set_postfix') and eval_metrics is not None:
+                    metric_val = eval_metrics.get('exact_match', None)
+                    if metric_val is not None:
+                        train_iter.set_postfix(loss=f"{last_loss:.4f}", exact_match=f"{metric_val:.4f}")
 
             global_step += 1
 
@@ -205,6 +219,10 @@ def main() -> None:
             args.max_new_tokens,
             args.num_example_preds,
         )
+        if not args.no_tqdm and 'train_iter' in locals() and hasattr(train_iter, 'set_postfix') and epoch_metrics is not None:
+            metric_val = epoch_metrics.get('exact_match', None)
+            if metric_val is not None:
+                train_iter.set_postfix(exact_match=f"{metric_val:.4f}")
         if accelerator.is_main_process:
             exact_val = epoch_metrics.get("exact_match", 0)
             if exact_val > best_exact:
