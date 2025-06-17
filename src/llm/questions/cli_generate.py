@@ -70,6 +70,12 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--config", required=True, help="YAML file describing question templates and system_prompt")
     p.add_argument("--output", required=True, help="Destination JSONL file (one Q-A per line)")
     p.add_argument("--limit", type=int, default=None, help="Optionally limit number of raw records for quick runs")
+    p.add_argument(
+        "--keep-null-columns",
+        action="store_true",
+        default=False,
+        help="Keep columns containing null values (by default, columns with any nulls are dropped)",
+    )
 
     return p.parse_args()
 
@@ -85,6 +91,17 @@ def main() -> None:
 
     logger.info("Loading raw data from %s", input_path)
     table = _load_table(input_path, limit=args.limit)
+    # Drop columns with any nulls unless user requests to keep them
+    # the Huggingface json load_data does not like nulls
+    if not args.keep_null_columns:
+        before_cols = len(table.column_names)
+        # Find columns with any nulls
+        null_cols = [col for col in table.column_names if table.column(col).null_count > 0]
+        if null_cols:
+            logger.info(f"Dropping columns with nulls: {null_cols}")
+            for col in null_cols:
+                table = table.remove_column(table.column_names.index(col))
+            logger.info(f"Dropped {len(null_cols)} columns with nulls (from {before_cols} to {len(table.column_names)})")
     logger.info("Loaded %d records", table.num_rows)
 
     logger.info("Parsing YAML config %s", args.config)
