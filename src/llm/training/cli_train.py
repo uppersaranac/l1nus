@@ -44,8 +44,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--gradient_accumulation_steps", type=int, default=8)
     p.add_argument("--logging_steps", type=int, default=200)
     p.add_argument("--eval_steps", type=int, default=1000)
-    p.add_argument("--max_new_tokens", type=int, default=64)
+    p.add_argument("--max_new_tokens", type=int, default=1024)
     p.add_argument("--num_example_preds", type=int, default=3, help="Number of example predictions to log during evaluation")
+    p.add_argument("--eval_num_examples", type=int, default=100, help="Number of examples to use for metric computation during evaluation")
     p.add_argument("--model_dtype", type=str, default="bfloat16", choices=["float16", "bfloat16", "float32"])
     p.add_argument("--no_tqdm", action="store_true", help="Disable tqdm progress bars.")
     return p.parse_args()
@@ -55,10 +56,19 @@ def _parse_args() -> argparse.Namespace:
 # Main
 # ---------------------------------------------------------------------------
 
-def _evaluate(accelerator: Accelerator, model, dataloader, tokenizer, compute_metrics, max_new_tokens: int, num_examples: int = 3) -> dict:
+def _evaluate(accelerator: Accelerator, model, dataloader, tokenizer, compute_metrics, max_new_tokens: int, num_examples: int = 100) -> dict:
     """Run generation-based evaluation and log exact-match metric."""
     model.eval()
+    # Only evaluate over the first num_examples examples in the dataloader
+    num_processed = 0
     for batch in dataloader:
+        batch_size = batch["input_ids"].size(0)
+        # If adding this batch would exceed num_examples, trim the batch
+        if num_processed + batch_size > num_examples:
+            trim = num_examples - num_processed
+            for k in batch:
+                batch[k] = batch[k][:trim]
+            batch_size = trim
         with torch.no_grad():
             generated = model.generate(
                 input_ids=batch["input_ids"],
@@ -70,6 +80,9 @@ def _evaluate(accelerator: Accelerator, model, dataloader, tokenizer, compute_me
         labels_all = accelerator.gather(batch["labels"])
         # Stream into metric accumulator (compute_result=False)
         compute_metrics((gen_all.cpu().numpy(), labels_all.cpu().numpy()), compute_result=False)
+        num_processed += batch_size
+        if num_processed >= num_examples:
+            break
     # Finalise metric
     metrics = compute_metrics((torch.empty(0), torch.empty(0)), compute_result=True)
     if accelerator.is_main_process:
@@ -217,7 +230,7 @@ def main() -> None:
             tokenizer,
             compute_metrics,
             args.max_new_tokens,
-            args.num_example_preds,
+            args.eval_num_examples,
         )
         if not args.no_tqdm and 'train_iter' in locals() and hasattr(train_iter, 'set_postfix') and epoch_metrics is not None:
             metric_val = epoch_metrics.get('exact_match', None)
