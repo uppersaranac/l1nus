@@ -23,7 +23,7 @@ from accelerate import Accelerator, DistributedDataParallelKwargs
 from tqdm import tqdm
 
 
-from llm_apis import compute_metrics_closure, do_generation
+from llm.llm_apis import compute_metrics_closure, do_generation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
