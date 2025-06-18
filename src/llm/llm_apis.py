@@ -621,28 +621,28 @@ def process_single_qa(
             # Use chat template if available
             prompt = [
                 {"role": "system", "content": system_prompt_override if system_prompt_override is not None else example["system_prompt"]},
-                {"role": "user", "content": example["question_template"].format(smiles=example['metadata']["smiles"])},
-                {"role": "assistant", "content": example["assistant_template"].format(answer=example["answer"])}
+                {"role": "user", "content": example["question_template"].format(**example['metadata'])},
+                {"role": "assistant", "content": example["assistant_template"].format(**example['metadata'])}
             ]
             prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
         else:
             # Fallback for models without chat templates
             system = system_prompt_override if system_prompt_override is not None else example["system_prompt"]
-            question = example["question_template"].format(smiles=example['metadata']["smiles"])
-            answer = example["assistant_template"].format(answer=example["answer"])
+            question = example["question_template"].format(**example['metadata'])
+            answer = example["assistant_template"].format(**example['metadata'])
             prompt_str = f"{system}\n\nuser: {question}\n\nassistant: {answer}"
     else:
         # For evaluation, only include the question (no answer)
         if hasattr(tok, 'apply_chat_template'):
             prompt = [  
                 {"role": "system", "content": system_prompt_override if system_prompt_override is not None else example.get("system_prompt", "")},
-                {"role": "user", "content": example["question_template"].format(smiles=example['metadata']["smiles"])}
+                {"role": "user", "content": example["question_template"].format(**example['metadata'])}
             ]
             prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, 
                                                 tokenize=False, enable_thinking=False)
         else:
             system = system_prompt_override if system_prompt_override is not None else example.get("system_prompt", "")
-            question = example["question_template"].format(smiles=example['metadata']["smiles"])
+            question = example["question_template"].format(**example['metadata'])
             prompt_str = f"{system}\n\nuser: {question}\n\nassistant: "
     
     # Tokenize the prompt
@@ -660,7 +660,7 @@ def process_single_qa(
     
     if is_train:
         # For training: find the answer span in the prompt
-        answer_text = str(example["assistant_template"].format(answer=example["answer"]))+""
+        answer_text = str(example["assistant_template"].format(**example['metadata']))
         
         input_ids_list = input_ids.tolist() # Already 1D
         
@@ -676,7 +676,7 @@ def process_single_qa(
         processed_example["labels"] = label  # Assign 1D list directly
     else:
         # For evaluation: right-align answer tokens
-        formatted_answer = example["assistant_template"].format(answer=example["answer"])
+        formatted_answer = example["assistant_template"].format(**example['metadata'])
         ans_enc = tok(formatted_answer, truncation=True, add_special_tokens=False, max_length=max_label_len, return_tensors="np")
         answer = ans_enc["input_ids"].tolist()[0]
         

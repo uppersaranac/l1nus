@@ -26,4 +26,3 @@ questions:
       Bonds not to hydrogen: <|extra_100|>{non_hydrogen_bond_count}<|extra_101|>
       Atoms with positive formal charge: <|extra_100|>{positive_formal_charge_count}<|extra_101|>
       Atoms with negative formal charge: <|extra_100|>{negative_formal_charge_count}<|extra_101|>
-      IUPAC name: <|extra_100|>{iupac_name}<|extra_101|>"

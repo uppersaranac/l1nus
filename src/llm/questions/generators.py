@@ -62,26 +62,11 @@ class QuestionGenerator:
             # Slice returns a Table with 1 row; convert to plain dict
             record = {k: v[0] for k, v in table.slice(i, 1).to_pydict().items()}
             for q_tmpl in self.config.question_templates:
-                # Resolve answer value automatically; allow custom mapping per template
-                answer_val = record.get(q_tmpl.id)
-                # Special-case common chemistry field names
-                if answer_val is None and q_tmpl.id == "iupac_name":
-                    answer_val = record.get("iupac")
-
-                mapping = record | {"answer": answer_val}
-                try:
-                    question_text = q_tmpl.render_question(record)
-                    answer_text = q_tmpl.render_answer(mapping)
-                except KeyError as exc:
-                    logger.debug("Skipping template %s due to missing key: %s", q_tmpl.id, exc)
-                    continue
 
                 # Exclude split from metadata & top-level output
                 metadata = {k: v for k, v in record.items() if k != "split"}
 
                 yield {
-                    "question": question_text,
-                    "answer": answer_text,
                     "question_id": q_tmpl.id,
                     "question_template": q_tmpl.user_template,
                     "assistant_template": q_tmpl.assistant_template,

@@ -30,16 +30,6 @@ __all__ = [
     "template_from_dict",
 ]
 
-
-def _safe_render(tmpl: str, mapping: Dict[str, Any]) -> str:
-    """Render *tmpl* with *mapping* using str.format style placeholders.
-
-    If a key is missing in *mapping*, a KeyError is raised so that the caller
-    can decide whether to ignore or surface the problem.
-    """
-    return tmpl.format(**mapping)
-
-
 @dataclass
 class QuestionTemplate:
     """A lightweight question/answer template wrapper."""
@@ -50,15 +40,6 @@ class QuestionTemplate:
     type: str = "generic"  # mcq | fill_blank | freeform | etc.
     # We allow arbitrary extra fields from YAML
     extras: Dict[str, Any] = field(default_factory=dict)
-
-    # ------------------------------------------------------------------
-    # Rendering helpers
-    # ------------------------------------------------------------------
-    def render_question(self, mapping: Dict[str, Any]) -> str:
-        return _safe_render(self.user_template, mapping)
-
-    def render_answer(self, mapping: Dict[str, Any]) -> str:
-        return _safe_render(self.assistant_template, mapping)
 
     # ------------------------------------------------------------------
     # YAML helpers

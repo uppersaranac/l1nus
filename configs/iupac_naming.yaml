@@ -6,4 +6,4 @@ question_set: iupac_naming
 questions:
   - id: iupac_name
     user_template: "Use the IUPAC naming rules to name the molecule {smiles}."
-    assistant_template: "<|extra_100|>{answer}<|extra_101|>."
+    assistant_template: "<|extra_100|>{iupac}<|extra_101|>."
