@@ -86,7 +86,6 @@ def _evaluate(accelerator: Accelerator, model, dataloader, tokenizer, compute_me
     # Finalise metric
     metrics = compute_metrics((torch.empty(0), torch.empty(0)), compute_result=True)
     if accelerator.is_main_process:
-        logger.info("Evaluation metrics: %s", metrics)
 
         # ---- log example predictions ----
         try:
@@ -102,7 +101,7 @@ def _evaluate(accelerator: Accelerator, model, dataloader, tokenizer, compute_me
             labels_tensor = sample_ds["labels"].masked_fill(sample_ds["labels"] == -100, tokenizer.pad_token_id)
             gold = tokenizer.batch_decode(labels_tensor, skip_special_tokens=True)
             for i, (g_pred, g_gold) in enumerate(zip(preds, gold)):
-                logger.info("EXAMPLE %d | PRED: %s | GOLD: %s", i, g_pred, g_gold)
+                logger.info("\nEXAMPLE %d \n PRED: %s \n GOLD: %s\n", i, g_pred, g_gold)
         except Exception as e:
             logger.warning("Failed to generate example predictions: %s", e)
 
