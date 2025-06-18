@@ -67,6 +67,11 @@ def main() -> None:
         system_prompt=system_prompt,
     )
 
+    # Ensure 'train' split is excluded from full_tok (it should already be)
+    if "train" in full_tok:
+        logger.warning("Removing 'train' split from full tokenised dataset before saving")
+        del full_tok["train"]
+
     logger.info("Saving tokenised datasets to %s", out_dir)
     full_tok.save_to_disk(str(out_dir / "full"))
     minimal_tok.save_to_disk(str(out_dir / "minimal"))

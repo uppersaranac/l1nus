@@ -133,7 +133,7 @@ def main() -> None:
     ds_min = load_from_disk(str(ds_min_path))
 
     train_dataset = ds_full["train"]
-    eval_dataset = ds_min["valid"]
+    eval_dataset = ds_min["valid"].select(range(args.eval_num_examples))
 
     # ---------------- model & optim ----------------
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)

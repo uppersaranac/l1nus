@@ -109,7 +109,17 @@ def tokenise_dataset_dict(
             num_proc,
             system_prompt=system_prompt,
         )
-        full_dict[split] = tok
-        # For non-train we keep full but create minimal too
-        minimal_dict[split] = tok.remove_columns([c for c in tok.column_names if c not in {"labels", "input_ids", "attention_mask"}])
+
+        if is_train:
+            # Exclude the training set from the *full* dataset but keep a minimal version
+            logger.info("Excluding 'train' split from full tokenised dataset as requested")
+            minimal_dict[split] = tok  # already minimal due to is_train=True
+        else:
+            # Keep full information for validation / test splits
+            full_dict[split] = tok
+            # Create minimal version by stripping meta columns
+            minimal_dict[split] = tok.remove_columns([
+                c for c in tok.column_names if c not in {"labels", "input_ids", "attention_mask"}
+            ])
+
     return DatasetDict(full_dict), DatasetDict(minimal_dict)
