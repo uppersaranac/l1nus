@@ -208,10 +208,10 @@ def main() -> None:
             last_loss = loss.item()
             if not args.no_tqdm and hasattr(train_iter, 'set_postfix'):
                 train_iter.set_postfix(loss=f"{last_loss:.4f}")
-
-            # ------------ logging & eval -------------
-            if global_step % args.logging_steps == 0 and accelerator.is_main_process:
-                logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, last_loss)
+            else:
+                # ------------ logging & eval -------------
+                if global_step % args.logging_steps == 0 and accelerator.is_main_process:
+                    logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, last_loss)
 
             if global_step % args.eval_steps == 0 and global_step != 0:
                 eval_metrics = _evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
