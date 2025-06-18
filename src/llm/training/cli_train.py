@@ -124,14 +124,10 @@ def main() -> None:
         logger.setLevel(logging.ERROR)
 
     # ---------------- data ----------------
-    ds_full_path = Path(args.dataset_dir) / "full"
     ds_min_path = Path(args.dataset_dir) / "minimal"
-    if accelerator.is_main_process:
-        logger.info("Loading tokenised datasets from %s", ds_full_path)
-    ds_full = load_from_disk(str(ds_full_path))
     ds_min = load_from_disk(str(ds_min_path))
 
-    train_dataset = ds_full["train"]
+    train_dataset = ds_min["train"]
     eval_dataset = ds_min["valid"].select(range(args.eval_num_examples))
 
     # ---------------- model & optim ----------------
