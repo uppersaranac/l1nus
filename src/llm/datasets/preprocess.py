@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 def load_questions_jsonl(path: str | Path) -> Dataset:
     """Load the JSONL file produced by *cli_generate.py* into a HF Dataset."""
     # the split argument is set to load all of the data (train, valid, test) into a flat Dataset.
-    ds = hfds.load_dataset("json", data_files=str(path), split="train") 
-    logger.info("Loaded %d Q-A records from %s", len(ds), path)
+    ds = hfds.load_dataset("json", data_files=str(path), split="train") # , streaming=True)  streaming dataset doesn't have column names!
+    logger.info("Loaded Q-A records from %s", path)
     return ds
 
 

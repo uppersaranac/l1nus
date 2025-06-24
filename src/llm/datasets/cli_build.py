@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 
 from transformers import AutoTokenizer
+import datasets
 
 from llm.datasets.preprocess import (
     load_questions_jsonl,
@@ -44,6 +45,8 @@ def main() -> None:
     q_path = Path(args.questions)
     out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    datasets.disable_caching()
 
     ds = load_questions_jsonl(q_path)
     if "split" in ds.column_names:
