@@ -21,6 +21,8 @@ from transformers import (
 )
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from tqdm import tqdm
+from torch.utils.data import DataLoader  # local import to avoid circular issues
+import math
 
 
 from llm.llm_apis import compute_metrics_closure, do_generation
@@ -49,6 +51,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--eval_num_examples", type=int, default=100, help="Number of examples to use for metric computation during evaluation")
     p.add_argument("--model_dtype", type=str, default="bfloat16", choices=["float16", "bfloat16", "float32"])
     p.add_argument("--no_tqdm", action="store_true", help="Disable tqdm progress bars.")
+    p.add_argument("--limit", type=int, default=None, help="If set, truncate the training set to this many examples.")
     return p.parse_args()
 
 
@@ -70,14 +73,22 @@ def _evaluate(accelerator: Accelerator, model, dataloader, tokenizer, compute_me
                 batch[k] = batch[k][:trim]
             batch_size = trim
         with torch.no_grad():
-            generated = model.generate(
+            # If the model is wrapped (e.g. DistributedDataParallel), unwrap to access `generate`
+            generated = accelerator.unwrap_model(model).generate(
                 input_ids=batch["input_ids"],
                 attention_mask=batch["attention_mask"],
                 max_new_tokens=max_new_tokens,
             )
+        # pad so all ranks have the same seq-length, otherwise will hang
+        generated_padded = accelerator.pad_across_processes(
+                generated, dim=1, pad_index=tokenizer.pad_token_id)
+        labels_padded = accelerator.pad_across_processes(
+                batch["labels"], dim=1, pad_index=-100)
+
         # Gather across processes so that metric is computed on full set
-        gen_all = accelerator.gather(generated)
-        labels_all = accelerator.gather(batch["labels"])
+        gen_all    = accelerator.gather(generated_padded)
+        labels_all = accelerator.gather(labels_padded)
+
         # Stream into metric accumulator (compute_result=False)
         compute_metrics((gen_all.cpu().numpy(), labels_all.cpu().numpy()), compute_result=False)
         num_processed += batch_size
@@ -128,6 +139,8 @@ def main() -> None:
     ds_min = load_from_disk(str(ds_min_path))
 
     train_dataset = ds_min["train"]
+    if args.limit is not None and args.limit > 0:
+        train_dataset = train_dataset.select(range(args.limit))
     eval_dataset = ds_min["valid"].select(range(args.eval_num_examples))
 
     # ---------------- model & optim ----------------
@@ -143,8 +156,6 @@ def main() -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
 
     # ---------------- dataloaders ----------------
-    from torch.utils.data import DataLoader  # local import to avoid circular issues
-    import math
 
     train_loader = DataLoader(
         train_dataset,
