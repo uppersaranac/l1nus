@@ -116,13 +116,6 @@ class AllPropertiesProcessor(QuestionSetProcessor):
         props = {key: answers[key][i] for key in answers}
         return q["assistant_template"].format(smiles=smile, **props)
 
-# Mapping of question set names to their processor classes.
-#: Dict[str, Type[QuestionSetProcessor]]
-PROCESSOR_CLASSES = {
-    "iupac_naming": IUPACNamingProcessor,
-    "molecular_properties": MolecularPropertiesProcessor,
-    "all_properties": AllPropertiesProcessor,
-}
 
 # =================================================
 # Molecular Property Functions
