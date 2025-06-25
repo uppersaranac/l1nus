@@ -75,7 +75,6 @@ class QuestionSetProcessor:
     """
     def __init__(self, name: str):
         self.name = name
-        self.questions = QUESTION_SETS[name]["questions"]
 
     def prepare_answers(self, ds: Any) -> Dict[str, Sequence[Any]]:
         """
@@ -85,24 +84,6 @@ class QuestionSetProcessor:
         :return: Dictionary mapping property/question names to lists of answers.
         """
         raise NotImplementedError
-
-    def show_examples(self, ds: Any, tok: Any, n: int) -> None:
-        """
-        Print example questions and answers for the question set.
-
-        :param ds: Dataset containing SMILES and answers.
-        :param tok: Tokenizer (currently unused).
-        :param n: Number of examples to show.
-        """
-        answers = self.prepare_answers(ds)
-        for i in range(min(len(ds), n)):
-            smile = ds["smiles"][i]
-            for q in self.questions:
-                q_str = q["user_template"].format(smiles=smile)
-                a_str = self.format_answer(q, answers, i, smile)
-                print(f"Q: {q_str}")
-                print(f"A: {a_str}")
-            print("-" * 40)
 
     def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
         """
@@ -115,41 +96,6 @@ class QuestionSetProcessor:
         :return: Formatted answer string.
         """
         raise NotImplementedError
-        
-    def expand_dataset(self, ds: Any, answers: Dict[str, Sequence[Any]]):
-        """
-        Expand a dataset to include all question/answer pairs.
-        
-        :param ds: Dataset containing SMILES and answers.
-        :param answers: Dictionary of prepared answers.
-        :return: Expanded dataset with one entry per Q&A pair.
-        """
-        from datasets import Dataset
-        
-        expanded_data = {
-            "smiles": [],
-            "question_id": [],
-            "question_template": [],
-            "answer": [],
-            "assistant_template": [],
-            "system_prompt": []
-        }
-        
-        system_prompt = QUESTION_SETS[self.name]["system_prompt"]
-        
-        for i, smile in enumerate(ds["smiles"]):
-            for q in self.questions:
-                q_id = q["id"]
-                # Check if we have an answer for this question and molecule
-                if q_id in answers and i < len(answers[q_id]):
-                    expanded_data["smiles"].append(smile)
-                    expanded_data["question_id"].append(q_id)
-                    expanded_data["question_template"].append(q["user_template"])
-                    expanded_data["answer"].append(answers[q_id][i])
-                    expanded_data["assistant_template"].append(q["assistant_template"])
-                    expanded_data["system_prompt"].append(system_prompt)
-        
-        return Dataset.from_dict(expanded_data)
 
 class IUPACNamingProcessor(QuestionSetProcessor):
     """
@@ -459,140 +405,6 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequ
         "negative_formal_charge_count": [count_negative_formal_charge_atoms(s) for s in smiles_list],
     }
 
-# =================================================
-# Question Sets and Templates
-# =================================================
-
-# Define different question sets
-QUESTION_SETS = {
-    "iupac_naming": {
-        "system_prompt": SYSTEM_PROMPT+" Place the answer between <|extra_100|> and <|extra_101|>.",
-        "questions": [
-            {
-                "id": "iupac_name",
-                "user_template": "Use the IUPAC naming rules to name the molecule {smiles}.",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>."
-            }
-        ]
-    },
-    "molecular_properties": {
-        "system_prompt": SYSTEM_PROMPT+" Place the answer between <|extra_100|> and <|extra_101|>.  The answer should be a number.",
-        "questions": [
-            {
-                "id": "carbon_count",
-                "user_template": "How many carbon atoms are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "heavy_atom_count",
-                "user_template": "How many heavy (non-hydrogen) atoms are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "non_hydrogen_bond_count",
-                "user_template": "How many bonds not to hydrogen are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "positive_formal_charge_count",
-                "user_template": "How many atoms with positive formal charge are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "negative_formal_charge_count",
-                "user_template": "How many atoms with negative formal charge are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "nitrogen_count",
-                "user_template": "How many nitrogen atoms are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "oxygen_count",
-                "user_template": "How many oxygen atoms are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "sulfur_count",
-                "user_template": "How many sulfur atoms are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "phosphorus_count",
-                "user_template": "How many phosphorus atoms are in the molecule {smiles}?", 
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "chlorine_count", 
-                "user_template": "How many chlorine atoms are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "fluorine_count",
-                "user_template": "How many fluorine atoms are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "ring_count",
-                "user_template": "How many rings are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "aromatic_ring_count",
-                "user_template": "How many aromatic rings are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "double_bond_count",
-                "user_template": "How many double bonds are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "triple_bond_count",
-                "user_template": "How many triple bonds are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "stereo_double_bond_count",
-                "user_template": "How many stereo double bonds are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            },
-            {
-                "id": "stereocenter_count",
-                "user_template": "How many stereocenters are in the molecule {smiles}?",
-                "assistant_template": "<|extra_100|>{answer}<|extra_101|>"
-            }
-        ]
-    },
-    "all_properties": {
-        "system_prompt": SYSTEM_PROMPT+" Put the answers in <|extra_100|> and <|extra_101|>.",
-        "questions": [
-            {
-                "id": "all_properties",
-                "user_template": "Analyze the following molecular properties for the molecule {smiles}: carbon atoms, nitrogen atoms, oxygen atoms, sulfur atoms, phosphorus atoms, chlorine atoms, fluorine atoms, rings, aromatic rings, double bonds, triple bonds, stereo double bonds, stereocenters, and the IUPAC name. Provide a comprehensive report.",
-                "assistant_template": "Molecular Analysis of {smiles}:\n\nCarbon atoms: <|extra_100|>{carbon_count}<|extra_101|>\nNitrogen atoms: <|extra_100|>{nitrogen_count}<|extra_101|>\nOxygen atoms: <|extra_100|>{oxygen_count}<|extra_101|>\nSulfur atoms: <|extra_100|>{sulfur_count}<|extra_101|>\nPhosphorus atoms: <|extra_100|>{phosphorus_count}<|extra_101|>\nChlorine atoms: <|extra_100|>{chlorine_count}<|extra_101|>\nFluorine atoms: <|extra_100|>{fluorine_count}<|extra_101|>\nRings: <|extra_100|>{ring_count}<|extra_101|>\nAromatic rings: <|extra_100|>{aromatic_ring_count}<|extra_101|>\nDouble bonds: <|extra_100|>{double_bond_count}<|extra_101|>\nTriple bonds: <|extra_100|>{triple_bond_count}<|extra_101|>\nStereo double bonds: <|extra_100|>{stereo_double_bond_count}<|extra_101|>\nStereocenters: <|extra_100|>{stereocenter_count}<|extra_101|>\nHeavy atoms: <|extra_100|>{heavy_atom_count}<|extra_101|>\nBonds not to hydrogen: <|extra_100|>{non_hydrogen_bond_count}<|extra_101|>\nAtoms with positive formal charge: <|extra_100|>{positive_formal_charge_count}<|extra_101|>\nAtoms with negative formal charge: <|extra_100|>{negative_formal_charge_count}<|extra_101|>\nIUPAC name: <|extra_100|>{iupac_name}<|extra_101|>"
-            }
-        ]
-    }
-}
-
-# ─────────────────────────── data helper ──────────────────────────────
-def load_arrow_dataset(path: str, limit: Optional[int] = None) -> Dataset:
-    """
-    Load an Arrow dataset from a file.
-
-    :param path: Path to the dataset file.
-    :param limit: Optional limit on the number of examples to load.
-    :return: Loaded dataset.
-    """
-    ds = Dataset.from_file(str(Path(path).expanduser()))
-    if limit and limit > 0 and len(ds) > limit:
-        ds = ds.select(random.sample(range(len(ds)), limit))
-        # ds = ds.select(range(limit))
-    return ds
-
-
 def process_single_qa(
     tok: Any,
     example: Dict[str, Any],
@@ -837,29 +649,9 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             return {}
     return compute_metrics
 
-
-
-def show_examples(raw_ds: Any, preds: Any, n: int = 10) -> None:
-    """
-    Show examples for a specific question set using the appropriate processor.
-
-    :param raw_ds: Raw dataset.
-    :param preds: Predictions.
-    :param n: Number of examples to show.
-    """
-    for i in range(min(len(preds), n)):
-        smile = raw_ds["smiles"][i]
-        q_str = raw_ds["question_template"][i].format(smiles=smile)
-        a_str = raw_ds['answer'][i]
-        print(f"Q: {q_str}")
-        print(f"A: {a_str}")
-        print(f"P: {preds[i]}")
-        print("-" * 40  )
-
-
 def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any) -> list[str]:
     """
-    Perform generation.
+    Perform generation.  Will not work with distributed training.
 
     :param max_new_tokens: Maximum number of new tokens.
     :param tokenizer: Tokenizer instance.
@@ -889,25 +681,3 @@ def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any) ->
 
     return response_texts
 
-class PrintFirstExampleCallback(TrainerCallback):
-    def __init__(self, tokenizer, train_dataset):
-        self.tokenizer = tokenizer
-        self.train_dataset = train_dataset
-        self.has_printed = False
-
-    def on_train_begin(self, args, state, control, **kwargs):
-        if not self.has_printed and len(self.train_dataset) > 0:
-            example = self.train_dataset[0]
-            input_ids = example['input_ids']
-            labels = example['labels']
-            try:
-                decoded_input = self.tokenizer.decode(input_ids, skip_special_tokens=True)
-            except Exception:
-                decoded_input = str(input_ids)
-            try:
-                decoded_labels = self.tokenizer.decode(labels, skip_special_tokens=True)
-            except Exception:
-                decoded_labels = str(labels)
-            print("\n[PrintFirstExampleCallback] Sample input:", decoded_input)
-            print("[PrintFirstExampleCallback] Expected output:", decoded_labels)
-            self.has_printed = True

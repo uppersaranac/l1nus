@@ -21,7 +21,6 @@ import pyarrow.json as pajson
 
 from llm.questions.generators import GenerationConfig, QuestionGenerator
 from llm.questions.processors import PROCESSOR_CLASSES
-from llm.llm_apis import QUESTION_SETS
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -111,10 +110,8 @@ def main() -> None:
     from llm.questions.processors import PROCESSOR_CLASSES
     qs_name: str | None = cfg.question_set
     if qs_name is None:
-        # Infer from YAML filename, e.g. 'configs/molecular_properties.yaml'
-        cfg_stem = Path(args.config).stem
-        if cfg_stem in PROCESSOR_CLASSES:
-            qs_name = cfg_stem
+        logger.error("No question set specified or inferred. Please set 'question_set' in the YAML config or use a known config filename.")
+        sys.exit(1)
 
     if qs_name:
         try:
@@ -132,9 +129,6 @@ def main() -> None:
                 table = table.remove_column(table.column_names.index(col))
             table = table.append_column(col, pa.array(values))
         logger.info("Computed answer columns via %s", qs_name)
-
-        # Store system_prompt in generator config for later retrieval
-        cfg.system_prompt = QUESTION_SETS[qs_name]["system_prompt"]
 
 
     gen = QuestionGenerator(cfg)
