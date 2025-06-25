@@ -14,6 +14,119 @@ from transformers import TrainerCallback
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
 
+
+# Processor to handle different question sets
+class QuestionSetProcessor:
+    """
+    Base class for handling answer preparation and example display for a question set.
+
+    :param name: Name of the question set.
+    """
+    def __init__(self, name: str):
+        self.name = name
+
+    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+        """
+        Prepare answers for the question set from a dataset.
+
+        :param ds: Dataset containing SMILES and possibly IUPAC names.
+        :return: Dictionary mapping property/question names to lists of answers.
+        """
+        raise NotImplementedError
+
+    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
+        """
+        Format the answer string for a specific question and molecule.
+
+        :param q: Question dictionary (with templates).
+        :param answers: Dictionary of answers for all molecules.
+        :param i: Index of the molecule in the dataset.
+        :param smile: SMILES string for the molecule.
+        :return: Formatted answer string.
+        """
+        raise NotImplementedError
+
+class IUPACNamingProcessor(QuestionSetProcessor):
+    """
+    Processor for the IUPAC naming question set.
+    """
+    def __init__(self):
+        super().__init__("iupac_naming")
+
+    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+        """
+        Prepare answers for IUPAC naming (just returns the IUPAC names).
+
+        :param ds: Dataset containing IUPAC names.
+        :return: Dictionary with 'iupac_name' mapped to the list of names.
+        """
+        import pyarrow as pa
+        return {"iupac_name": table.column("iupac").to_pylist()}
+
+    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
+        ans = answers[q["id"]][i]
+        return q["assistant_template"].format(answer=ans)
+
+class MolecularPropertiesProcessor(QuestionSetProcessor):
+    """
+    Processor for the molecular properties question set.
+    """
+    def __init__(self):
+        super().__init__("molecular_properties")
+
+    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+        smiles = table.column("smiles").to_pylist()
+        answers = calculate_molecular_properties(smiles)
+        answers["iupac_name"] = table.column("iupac").to_pylist()
+        # Ensure all answers are lists of strings
+        for k in answers:
+            answers[k] = [str(x) for x in answers[k]]
+        return answers
+
+    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
+        ans = answers[q["id"]][i]
+        return q["assistant_template"].format(answer=ans)
+
+class AllPropertiesProcessor(QuestionSetProcessor):
+    """
+    Processor for the comprehensive 'all_properties' question set.
+    """
+    def __init__(self):
+        super().__init__("all_properties")
+
+    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+        smiles = table.column("smiles").to_pylist()
+        answers = calculate_molecular_properties(smiles)
+        answers["iupac_name"] = table.column("iupac").to_pylist()
+        # Ensure all answers are lists of strings
+        for k in answers:
+            answers[k] = [str(x) for x in answers[k]]
+        return answers
+
+    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
+        """
+        Format the answer for the all-properties question (expands all properties into the template).
+
+        :param q: Question dictionary.
+        :param answers: Dictionary of answers.
+        :param i: Index of the molecule.
+        :param smile: SMILES string.
+        :return: Formatted answer string.
+        """
+        props = {key: answers[key][i] for key in answers}
+        return q["assistant_template"].format(smiles=smile, **props)
+
+# Mapping of question set names to their processor classes.
+#: Dict[str, Type[QuestionSetProcessor]]
+PROCESSOR_CLASSES = {
+    "iupac_naming": IUPACNamingProcessor,
+    "molecular_properties": MolecularPropertiesProcessor,
+    "all_properties": AllPropertiesProcessor,
+}
+
+# =================================================
+# Molecular Property Functions
+# =================================================
 def count_heavy_atoms(smiles: str) -> int:
     """
     Count the number of heavy (non-hydrogen) atoms in a molecule.
@@ -61,114 +174,6 @@ def count_negative_formal_charge_atoms(smiles: str) -> int:
     if mol is None:
         return 0
     return sum(1 for atom in mol.GetAtoms() if atom.GetFormalCharge() < 0)
-
-
-
-SYSTEM_PROMPT = "Do not think."
-
-# Processor to handle different question sets
-class QuestionSetProcessor:
-    """
-    Base class for handling answer preparation and example display for a question set.
-
-    :param name: Name of the question set.
-    """
-    def __init__(self, name: str):
-        self.name = name
-
-    def prepare_answers(self, ds: Any) -> Dict[str, Sequence[Any]]:
-        """
-        Prepare answers for the question set from a dataset.
-
-        :param ds: Dataset containing SMILES and possibly IUPAC names.
-        :return: Dictionary mapping property/question names to lists of answers.
-        """
-        raise NotImplementedError
-
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        """
-        Format the answer string for a specific question and molecule.
-
-        :param q: Question dictionary (with templates).
-        :param answers: Dictionary of answers for all molecules.
-        :param i: Index of the molecule in the dataset.
-        :param smile: SMILES string for the molecule.
-        :return: Formatted answer string.
-        """
-        raise NotImplementedError
-
-class IUPACNamingProcessor(QuestionSetProcessor):
-    """
-    Processor for the IUPAC naming question set.
-    """
-    def __init__(self):
-        super().__init__("iupac_naming")
-    def prepare_answers(self, ds: Any) -> Dict[str, Sequence[Any]]:
-        """
-        Prepare answers for IUPAC naming (just returns the IUPAC names).
-
-        :param ds: Dataset containing IUPAC names.
-        :return: Dictionary with 'iupac_name' mapped to the list of names.
-        """
-        return {"iupac_name": ds["iupac"]}
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        ans = answers[q["id"]][i]
-        return q["assistant_template"].format(answer=ans)
-
-class MolecularPropertiesProcessor(QuestionSetProcessor):
-    """
-    Processor for the molecular properties question set.
-    """
-    def __init__(self):
-        super().__init__("molecular_properties")
-    def prepare_answers(self, ds: Any) -> Dict[str, Sequence[Any]]:
-        answers = calculate_molecular_properties(ds["smiles"])
-        answers["iupac_name"] = ds["iupac"]
-        # Ensure all answers are lists of strings
-        for k in answers:
-            answers[k] = [str(x) for x in answers[k]]
-        return answers
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        ans = answers[q["id"]][i]
-        return q["assistant_template"].format(answer=ans)
-
-class AllPropertiesProcessor(QuestionSetProcessor):
-    """
-    Processor for the comprehensive 'all_properties' question set.
-    """
-    def __init__(self):
-        super().__init__("all_properties")
-    def prepare_answers(self, ds: Any) -> Dict[str, Sequence[Any]]:
-        answers = calculate_molecular_properties(ds["smiles"])
-        answers["iupac_name"] = ds["iupac"]
-        # Ensure all answers are lists of strings
-        for k in answers:
-            answers[k] = [str(x) for x in answers[k]]
-        return answers
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        """
-        Format the answer for the all-properties question (expands all properties into the template).
-
-        :param q: Question dictionary.
-        :param answers: Dictionary of answers.
-        :param i: Index of the molecule.
-        :param smile: SMILES string.
-        :return: Formatted answer string.
-        """
-        props = {key: answers[key][i] for key in answers}
-        return q["assistant_template"].format(smiles=smile, **props)
-
-# Mapping of question set names to their processor classes.
-#: Dict[str, Type[QuestionSetProcessor]]
-PROCESSOR_CLASSES = {
-    "iupac_naming": IUPACNamingProcessor,
-    "molecular_properties": MolecularPropertiesProcessor,
-    "all_properties": AllPropertiesProcessor,
-}
-
-# =================================================
-# Molecular Property Functions
-# =================================================
 
 def count_element_atoms(mol: Any, element: str) -> int:
     """

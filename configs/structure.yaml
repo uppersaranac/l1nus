@@ -1,0 +1,13 @@
+# Configuration for molecular property counting questions
+system_prompt: "Do not think. Please choose the best answer."
+
+question_set: structure
+
+questions:
+  - id: isomers
+    user_template: "Which of the following structures is identical to {smiles}?\n\nA. {smiles_A}\nB. {smiles_B}\nC. {smiles_C}\nD. {smiles_D}\n\n"
+    assistant_template: "Answer: {isomer_answer}\n"
+  - id: stereochemistry
+    user_template: "Which of the following structures is a stereoisomer of {smiles}?\n\nA. {smiles_A}\nB. {smiles_B}\nC. {smiles_C}\nD. {smiles_D}\n\n"
+    assistant_template: "Answer: {stereo_answer}\n"
+  

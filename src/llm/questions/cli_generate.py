@@ -120,9 +120,7 @@ def main() -> None:
             raise SystemExit(f"Unknown question set: {qs_name}")
 
         proc = proc_cls()
-        # Create dataset-like mapping (lists) from Arrow columns
-        ds_like = {col: table.column(col).to_pylist() for col in table.column_names}
-        answers = proc.prepare_answers(ds_like)
+        answers = proc.prepare_answers(table)
         # Append each answer list as a new Arrow column (overwrite if exists)
         for col, values in answers.items():
             if col in table.column_names:
