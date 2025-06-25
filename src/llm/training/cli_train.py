@@ -11,6 +11,7 @@ import argparse
 import logging
 from pathlib import Path
 
+
 import torch
 from datasets import load_from_disk, Dataset
 from transformers import (
@@ -135,7 +136,8 @@ def main() -> None:
         logger.setLevel(logging.ERROR)
 
     # ---------------- data ----------------
-    ds_min_path = Path(args.dataset_dir) / "minimal"
+    dataset_dir = Path(args.dataset_dir).expanduser()
+    ds_min_path = dataset_dir / "minimal"
     ds_min = load_from_disk(str(ds_min_path))
 
     train_dataset = ds_min["train"]
@@ -144,12 +146,13 @@ def main() -> None:
     eval_dataset = ds_min["valid"].select(range(args.eval_num_examples))
 
     # ---------------- model & optim ----------------
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    model_name = Path(args.model_name).expanduser()
+    tokenizer = AutoTokenizer.from_pretrained(str(model_name))
     tokenizer.padding_side = "left"
     tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        args.model_name,
+        str(model_name),
         torch_dtype=getattr(torch, args.model_dtype),
     )
 
