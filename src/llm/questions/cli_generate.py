@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 import pyarrow as pa
@@ -107,7 +108,6 @@ def main() -> None:
     cfg = GenerationConfig.from_yaml(args.config)
 
     # Determine which QuestionSetProcessor (if any) to apply
-    from llm.questions.processors import PROCESSOR_CLASSES
     qs_name: str | None = cfg.question_set
     if qs_name is None:
         logger.error("No question set specified or inferred. Please set 'question_set' in the YAML config or use a known config filename.")
