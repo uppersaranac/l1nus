@@ -273,7 +273,6 @@ class GenTrainer(Trainer):
             max_new_tokens=args.max_new_tokens,
         )
 
-        # pad to the same length so the Trainer can cat() tensors
         gen = self._pad_tensors_to_max_len(gen, gen.shape[1])
         labels = self._pad_tensors_to_max_len(inputs["labels"], gen.shape[1])
 

@@ -1,0 +1,57 @@
+# Configuration for molecular property counting questions
+system_prompt: "Do not think. Place the answer between <|extra_100|> and <|extra_101|>. The answer should be a number."
+
+question_set: molecular_properties
+
+questions:
+  - id: carbon_count
+    user_template: "How many carbon atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{carbon_count}<|extra_101|>"
+  - id: heavy_atom_count
+    user_template: "How many heavy (non-hydrogen) atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{heavy_atom_count}<|extra_101|>"
+  - id: non_hydrogen_bond_count
+    user_template: "How many bonds not to hydrogen are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{non_hydrogen_bond_count}<|extra_101|>"
+  - id: positive_formal_charge_count
+    user_template: "How many atoms with positive formal charge are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{positive_formal_charge_count}<|extra_101|>"
+  - id: negative_formal_charge_count
+    user_template: "How many atoms with negative formal charge are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{negative_formal_charge_count}<|extra_101|>"
+  - id: nitrogen_count
+    user_template: "How many nitrogen atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{nitrogen_count}<|extra_101|>"
+  - id: oxygen_count
+    user_template: "How many oxygen atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{oxygen_count}<|extra_101|>"
+  - id: sulfur_count
+    user_template: "How many sulfur atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{sulfur_count}<|extra_101|>"
+  - id: phosphorus_count
+    user_template: "How many phosphorus atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{phosphorus_count}<|extra_101|>"
+  - id: chlorine_count
+    user_template: "How many chlorine atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{chlorine_count}<|extra_101|>"
+  - id: fluorine_count
+    user_template: "How many fluorine atoms are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{fluorine_count}<|extra_101|>"
+  - id: ring_count
+    user_template: "How many rings are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{ring_count}<|extra_101|>"
+  - id: aromatic_ring_count
+    user_template: "How many aromatic rings are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{aromatic_ring_count}<|extra_101|>"
+  - id: double_bond_count
+    user_template: "How many double bonds are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{double_bond_count}<|extra_101|>"
+  - id: triple_bond_count
+    user_template: "How many triple bonds are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{triple_bond_count}<|extra_101|>"
+  - id: stereo_double_bond_count
+    user_template: "How many stereo double bonds are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{stereo_double_bond_count}<|extra_101|>"
+  - id: stereocenter_count
+    user_template: "How many stereocenters are in the molecule {smiles}?"
+    assistant_template: "<|extra_100|>{stereocenter_count}<|extra_101|>"
