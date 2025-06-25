@@ -37,6 +37,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--max-length", type=int, default=4096, help="Max prompt length")
     p.add_argument("--max-label-len", type=int, default=1024)
     p.add_argument("--num-proc", type=int, default=None, help="Parallelism for .map()")
+    p.add_argument("--limit", type=int, default=None, help="Optionally limit number of raw records for quick runs")
     return p.parse_args()
 
 
@@ -49,6 +50,9 @@ def main() -> None:
     datasets.disable_caching()
 
     ds = load_questions_jsonl(q_path)
+    if args.limit is not None:
+        logger.info("Limiting dataset to %d records", args.limit)
+        ds = ds.select(range(args.limit))
     if "split" in ds.column_names:
         split_ds = split_by_column(ds)
 
