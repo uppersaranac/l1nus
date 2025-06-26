@@ -8,14 +8,14 @@ The behaviour is defined entirely by a YAML configuration file – see
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Iterator, Sequence
+from typing import Any, Dict, Iterator, List, Sequence
 
-import yaml
 import pyarrow as pa
+import yaml
 
 from .templates import QuestionTemplate, template_from_dict
 

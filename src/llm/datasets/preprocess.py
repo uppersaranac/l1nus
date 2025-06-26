@@ -14,7 +14,7 @@ import datasets as hfds
 from datasets import Dataset, DatasetDict
 from transformers import AutoTokenizer
 
-from llm.llm_apis import process_single_qa  # reuse existing logic
+from llm.llm_apis import process_single_qa
 
 logger = logging.getLogger(__name__)
 

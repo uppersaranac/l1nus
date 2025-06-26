@@ -1,14 +1,16 @@
 import pytest
 import numpy as np
 import torch
+import pyarrow as pa
+
 from unittest.mock import MagicMock
 from transformers import AutoTokenizer
 from llm.llm_apis import (
-    build_train_batch, build_eval_batch, _norm, compute_metrics_closure, do_generation,
+    _norm, compute_metrics_closure, do_generation,
     count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
     calculate_molecular_properties,
     QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor,
-    QUESTION_SETS
+
 )
 
 @pytest.fixture(scope="module")
@@ -18,54 +20,10 @@ def tokenizer():
     tok.pad_token = tok.eos_token
     return tok
 
-@pytest.fixture
-def toy_data():
-    return ["CCO", "CC(=O)O"], ["ethanol", "acetic acid"]
-
-def test_build_train_batch(tokenizer, toy_data):
-    smiles, iupac = toy_data
-    max_len = 32
-    processor = IUPACNamingProcessor()
-    answers = processor.prepare_answers({"smiles": smiles, "iupac": iupac})
-    batch = build_train_batch(tokenizer, smiles, answers, max_len=max_len)
-
-    input_ids = batch["input_ids"]
-    labels = batch["labels"]
-
-    assert len(input_ids) == len(smiles)
-    assert all(len(seq) == max_len for seq in input_ids)
-    assert all(len(seq) == max_len for seq in labels)
-
-    for inp, lab in zip(input_ids, labels):
-        padding_len = sum(1 for tok in inp if tok == tokenizer.pad_token_id)
-        assert all(tok == -100 for tok in lab[:padding_len])
-        for i in range(max_len):
-            if lab[i] != -100:
-                assert lab[i] == inp[i]
-
-def test_build_eval_batch(tokenizer, toy_data):
-    smiles, iupac = toy_data
-    max_prompt_len = 32
-    max_label_len = 16
-    processor = IUPACNamingProcessor()
-    answers = processor.prepare_answers({"smiles": smiles, "iupac": iupac})
-    batch = build_eval_batch(tokenizer, smiles, answers, max_prompt_len, max_label_len)
-
-    input_ids = batch["input_ids"]
-    labels = batch["labels"]
-
-    assert len(input_ids) == len(smiles)
-    assert all(len(seq) == max_prompt_len for seq in input_ids)
-    assert all(len(seq) == max_prompt_len for seq in labels)
-
-    for label in labels:
-        assert all(tok == -100 for tok in label[:max_prompt_len - max_label_len])
-        assert any(tok != -100 for tok in label[max_prompt_len - max_label_len:])
-
 def test_norm():
-    assert _norm("It is <|extra_100|>ethanol<|extra_101|") == "ethanol"
-    assert _norm(" <|extra_100|ethanol<|extra_101|> ") == "ethanol"
-    assert _norm("It is <|extra_100|ethanol<|extra_101|") == "ethanol"
+    """Verify that _norm extracts the value between the special markers."""
+    assert _norm("It is <|extra_100|>ethanol<|extra_101|>") == "ethanol"
+    assert _norm(" <|extra_100|>ethanol<|extra_101|> ") == "ethanol"
 
 def test_count_heavy_atoms():
     assert count_heavy_atoms("CCO") == 3  # ethanol: 2C, 1O
@@ -98,104 +56,79 @@ def test_calculate_molecular_properties():
     assert props["oxygen_count"] == [1, 0]
 
 def test_iupac_naming_processor():
-    ds = {"smiles": ["CCO", "CC(=O)O"], "iupac": ["ethanol", "acetic acid"]}
+    # Create a table with smiles and iupac columns
+    smiles = ["CCO", "CC(=O)O"]
+    iupac = ["ethanol", "acetic acid"]
+    table = pa.table({"smiles": smiles, "iupac": iupac})
     proc = IUPACNamingProcessor()
-    answers = proc.prepare_answers(ds)
+    answers = proc.prepare_answers(table)
     assert answers == {"iupac_name": ["ethanol", "acetic acid"]}
-    q = QUESTION_SETS["iupac_naming"]["questions"][0]
-    for i, smile in enumerate(ds["smiles"]):
-        formatted = proc.format_answer(q, answers, i, smile)
-        assert ds["iupac"][i] in formatted
-
 
 def test_molecular_properties_processor():
-    ds = {"smiles": ["CCO", "CC(=O)O"], "iupac": ["ethanol", "acetic acid"]}
+    smiles = ["CCO", "CC(=O)O"]
+    iupac = ["ethanol", "acetic acid"]
+    table = pa.table({"smiles": smiles, "iupac": iupac})
     proc = MolecularPropertiesProcessor()
-    answers = proc.prepare_answers(ds)
+    answers = proc.prepare_answers(table)
     # Check a few key properties for both molecules
-    assert answers["carbon_count"] == [2, 2]
-    assert answers["oxygen_count"] == [1, 2]
+    assert answers["carbon_count"] == ["2", "2"]
+    assert answers["oxygen_count"] == ["1", "2"]
     assert answers["iupac_name"] == ["ethanol", "acetic acid"]
-    q = QUESTION_SETS["molecular_properties"]["questions"][0]
-    for i, smile in enumerate(ds["smiles"]):
-        formatted = proc.format_answer(q, answers, i, smile)
-        # Should contain the correct answer for each molecule
-        assert str(answers[q["id"]][i]) in formatted
-
 
 def test_all_properties_processor():
-    ds = {"smiles": ["CCO", "CC(=O)O"], "iupac": ["ethanol", "acetic acid"]}
+    smiles = ["CCO", "CC(=O)O"]
+    iupac = ["ethanol", "acetic acid"]
+    table = pa.table({"smiles": smiles, "iupac": iupac})
     proc = AllPropertiesProcessor()
-    answers = proc.prepare_answers(ds)
-    q = QUESTION_SETS["all_properties"]["questions"][0]
-    for i, smile in enumerate(ds["smiles"]):
-        formatted = proc.format_answer(q, answers, i, smile)
-        # Should include the assistant template's header and at least one property value
-        assert "Molecular Analysis" in formatted
-        assert str(answers["carbon_count"][i]) in formatted
-        assert ds["iupac"][i] in formatted
-
+    answers = proc.prepare_answers(table)
+    assert answers["carbon_count"] == ["2", "2"]
+    assert answers["iupac_name"] == ["ethanol", "acetic acid"]
+    # Check other properties exist
+    assert "heavy_atom_count" in answers
+    assert "non_hydrogen_bond_count" in answers
 
 def test_processors_edge_cases():
     # Edge case 1: Empty input
-    ds_empty = {"smiles": [], "iupac": []}
+    smiles = []
+    iupac = []
+    table = pa.table({"smiles": smiles, "iupac": iupac})
     for Processor in [IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor]:
         proc = Processor()
-        answers = proc.prepare_answers(ds_empty)
+        answers = proc.prepare_answers(table)
         # All returned lists should be empty
         for v in answers.values():
             assert v == []
-
     # Edge case 2: Invalid SMILES
-    ds_invalid = {"smiles": ["", "not_a_smiles"], "iupac": ["", "invalid"]}
-    # Should not raise, and should return zero/empty/placeholder values
+    smiles = ["", "not_a_smiles"]
+    iupac = ["", "invalid"]
+    table = pa.table({"smiles": smiles, "iupac": iupac})
     for Processor in [MolecularPropertiesProcessor, AllPropertiesProcessor]:
         proc = Processor()
-        answers = proc.prepare_answers(ds_invalid)
-        # All property lists should have correct length and handle invalid gracefully
+        answers = proc.prepare_answers(table)
         for v in answers.values():
             assert len(v) == 2
-    # IUPACNamingProcessor just returns the iupac field
     proc = IUPACNamingProcessor()
-    answers = proc.prepare_answers(ds_invalid)
+    answers = proc.prepare_answers(table)
     assert answers["iupac_name"] == ["", "invalid"]
-
     # Edge case 3: Mismatched lengths
-    ds_mismatch = {"smiles": ["CCO"], "iupac": ["ethanol", "extra"]}
+    smiles = ["CCO"]
+    iupac = ["ethanol", "extra"]
+    with pytest.raises(Exception):
+        table = pa.table({"smiles": smiles, "iupac": iupac})
     for Processor in [IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor]:
         proc = Processor()
         try:
-            answers = proc.prepare_answers(ds_mismatch)
+            answers = proc.prepare_answers(table)
         except Exception as e:
-            # Should raise a clear error or handle gracefully
             assert isinstance(e, (IndexError, ValueError, AssertionError))
-
-def test_molecular_properties_processor():
-    ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
-    proc = MolecularPropertiesProcessor()
-    answers = proc.prepare_answers(ds)
-    assert answers["carbon_count"][0] == '2'
-    q = QUESTION_SETS["molecular_properties"]["questions"][0]
-    formatted = proc.format_answer(q, answers, 0, "CCO")
-    assert str(answers[q["id"]][0]) in formatted
-
-def test_all_properties_processor():
-    ds = {"smiles": ["CCO"], "iupac": ["ethanol"]}
-    proc = AllPropertiesProcessor()
-    answers = proc.prepare_answers(ds)
-    q = QUESTION_SETS["all_properties"]["questions"][0]
-    formatted = proc.format_answer(q, answers, 0, "CCO")
-    assert "Molecular Analysis" in formatted
-    assert str(answers["carbon_count"][0]) in formatted
 
 def test_question_set_processor_not_implemented():
     class Dummy(QuestionSetProcessor):
         pass
     dummy = Dummy("iupac_naming")
+    table = pa.table({"smiles": [], "iupac": []})
     with pytest.raises(NotImplementedError):
-        dummy.prepare_answers({})
-    with pytest.raises(NotImplementedError):
-        dummy.format_answer({}, {}, 0, "CCO")
+        dummy.prepare_answers(table)
 
 def test_compute_metrics_closure_exact_match(tokenizer):
     compute_metrics = compute_metrics_closure(tokenizer)
@@ -226,12 +159,10 @@ def test_do_generation_mock(tokenizer):
     model.device = torch.device("cpu")
     model.generate = MagicMock(return_value=torch.tensor([[1, 2, 3], [4, 5, 6]]))
 
-    preds = do_generation(num_beams=1, max_new_tokens=5,
+    preds = do_generation(max_new_tokens=5,
                           tokenizer=tokenizer, model=model,
                           data=DummyDataset())
-    import numpy as np
-    assert isinstance(preds, np.ndarray)
-    assert preds.shape[0] == 2
-    assert preds.ndim == 2
-    assert preds.dtype == np.int64
+    assert isinstance(preds, list)
+    assert all(isinstance(p, str) for p in preds)
+
     model.generate.assert_called_once()

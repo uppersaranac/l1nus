@@ -17,14 +17,14 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.csv as pacsv
-import pyarrow.parquet as pq
 import pyarrow.json as pajson
+import pyarrow.parquet as pq
 
 from llm.questions.generators import GenerationConfig, QuestionGenerator
 from llm.questions.processors import PROCESSOR_CLASSES
 
-logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

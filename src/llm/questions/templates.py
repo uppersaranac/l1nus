@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from string import Template
-from typing import Dict, Any
+from typing import Any, Dict
 
 __all__ = [
     "QuestionTemplate",

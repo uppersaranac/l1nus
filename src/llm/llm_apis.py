@@ -1,18 +1,17 @@
 #!/usr/bin/env python
 from __future__ import annotations
-from pathlib import Path
+
 import random
-from typing import Any, Sequence, Dict, Optional, Callable
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Sequence
 
-import numpy as np
 import evaluate
-from datasets import Dataset
+import numpy as np
 import torch
-from transformers import TrainerCallback
-
-# Import rdkit for molecular property calculations
+from datasets import Dataset
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
+from transformers import TrainerCallback
 
 
 # Processor to handle different question sets

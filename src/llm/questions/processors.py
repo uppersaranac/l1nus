@@ -15,21 +15,19 @@ via entry-points for true domain-agnostic plug-ins.
 """
 from __future__ import annotations
 
-from typing import Dict, Type
-
-# Import implementations from existing module
 from llm.llm_apis import (
-    QuestionSetProcessor,
+    AllPropertiesProcessor,
     IUPACNamingProcessor,
     MolecularPropertiesProcessor,
-    AllPropertiesProcessor,
+    QuestionSetProcessor,
 )
+from typing import Dict, Type
 
 # Public mapping identical to original
 PROCESSOR_CLASSES: Dict[str, Type[QuestionSetProcessor]] = {
+    "all_properties": AllPropertiesProcessor,
     "iupac_naming": IUPACNamingProcessor,
     "molecular_properties": MolecularPropertiesProcessor,
-    "all_properties": AllPropertiesProcessor,
 }
 """
 Dictionary mapping question set names to their processor classes.
@@ -38,9 +36,9 @@ Dictionary mapping question set names to their processor classes.
 """
 
 __all__ = [
-    "QuestionSetProcessor",
+    "AllPropertiesProcessor",
     "IUPACNamingProcessor",
     "MolecularPropertiesProcessor",
-    "AllPropertiesProcessor",
     "PROCESSOR_CLASSES",
+    "QuestionSetProcessor",
 ]

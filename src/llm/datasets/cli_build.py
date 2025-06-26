@@ -11,11 +11,9 @@ Example:
 from __future__ import annotations
 
 import argparse
+import datasets
 import logging
 from pathlib import Path
-
-from transformers import AutoTokenizer
-import datasets
 
 from llm.datasets.preprocess import (
     load_questions_jsonl,
@@ -23,6 +21,7 @@ from llm.datasets.preprocess import (
     tokenise_dataset_dict,
 )
 from llm.questions.generators import GenerationConfig
+from transformers import AutoTokenizer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

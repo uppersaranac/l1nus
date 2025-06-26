@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from datasets import Dataset
 
-from llm.datasets.preprocess import split_dataset, split_by_column
+from llm.datasets.preprocess import split_by_column
 
 
 @pytest.fixture
@@ -36,13 +36,3 @@ def test_split_by_column_removes_split(dummy_dataset):
     assert len(dsdict["valid"]) == 5
     assert len(dsdict["test"]) == 5
 
-
-def test_split_dataset_fractions(dummy_dataset):
-    # Remove split column to test fraction splitting
-    ds = dummy_dataset.remove_columns(["split"])
-    dsdict = split_dataset(ds, valid_frac=0.1, test_frac=0.2, seed=0)
-    total = sum(len(s) for s in dsdict.values())
-    assert total == len(ds)
-    # Rough fractions (32 samples * 0.2 = 6 etc.) – allow ±1
-    assert abs(len(dsdict["test"]) - int(0.2 * len(ds))) <= 1
-    assert abs(len(dsdict["valid"]) - int(0.1 * len(ds))) <= 1

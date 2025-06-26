@@ -9,24 +9,21 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 from pathlib import Path
 
-
-import torch
-from datasets import load_from_disk, Dataset
+from accelerate import Accelerator, DistributedDataParallelKwargs
+from datasets import Dataset, load_from_disk
+from llm.llm_apis import compute_metrics_closure, do_generation
+from torch.utils.data import DataLoader  # local import to avoid circular issues
+from tqdm import tqdm
 from transformers import (
-    AutoTokenizer,
     AutoModelForCausalLM,
+    AutoTokenizer,
     default_data_collator,
     get_scheduler,
 )
-from accelerate import Accelerator, DistributedDataParallelKwargs
-from tqdm import tqdm
-from torch.utils.data import DataLoader  # local import to avoid circular issues
-import math
-
-
-from llm.llm_apis import compute_metrics_closure, do_generation
+import torch
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
