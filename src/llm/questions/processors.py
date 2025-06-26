@@ -31,6 +31,11 @@ PROCESSOR_CLASSES: Dict[str, Type[QuestionSetProcessor]] = {
     "molecular_properties": MolecularPropertiesProcessor,
     "all_properties": AllPropertiesProcessor,
 }
+"""
+Dictionary mapping question set names to their processor classes.
+
+:rtype: Dict[str, Type[QuestionSetProcessor]]
+"""
 
 __all__ = [
     "QuestionSetProcessor",

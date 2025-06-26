@@ -21,16 +21,19 @@ class QuestionSetProcessor:
     Base class for handling answer preparation and example display for a question set.
 
     :param name: Name of the question set.
+    :type name: str
     """
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         self.name = name
 
     def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
         """
         Prepare answers for the question set from a dataset.
 
-        :param ds: Dataset containing SMILES and possibly IUPAC names.
+        :param table: Dataset containing SMILES and possibly IUPAC names.
+        :type table: pa.Table
         :return: Dictionary mapping property/question names to lists of answers.
+        :rtype: Dict[str, Sequence[Any]]
         """
         raise NotImplementedError
 
@@ -39,10 +42,15 @@ class QuestionSetProcessor:
         Format the answer string for a specific question and molecule.
 
         :param q: Question dictionary (with templates).
+        :type q: dict
         :param answers: Dictionary of answers for all molecules.
+        :type answers: dict
         :param i: Index of the molecule in the dataset.
+        :type i: int
         :param smile: SMILES string for the molecule.
+        :type smile: str
         :return: Formatted answer string.
+        :rtype: str
         """
         raise NotImplementedError
 
@@ -50,20 +58,36 @@ class IUPACNamingProcessor(QuestionSetProcessor):
     """
     Processor for the IUPAC naming question set.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("iupac_naming")
 
     def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
         """
         Prepare answers for IUPAC naming (just returns the IUPAC names).
 
-        :param ds: Dataset containing IUPAC names.
+        :param table: Dataset containing IUPAC names.
+        :type table: pa.Table
         :return: Dictionary with 'iupac_name' mapped to the list of names.
+        :rtype: Dict[str, Sequence[Any]]
         """
         import pyarrow as pa
         return {"iupac_name": table.column("iupac").to_pylist()}
 
     def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
+        """
+        Format the answer string for IUPAC naming.
+
+        :param q: Question dictionary (with templates).
+        :type q: dict
+        :param answers: Dictionary of answers for all molecules.
+        :type answers: dict
+        :param i: Index of the molecule in the dataset.
+        :type i: int
+        :param smile: SMILES string for the molecule.
+        :type smile: str
+        :return: Formatted answer string.
+        :rtype: str
+        """
         ans = answers[q["id"]][i]
         return q["assistant_template"].format(answer=ans)
 
@@ -71,10 +95,18 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
     """
     Processor for the molecular properties question set.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("molecular_properties")
 
     def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+        """
+        Prepare answers for molecular properties.
+
+        :param table: Dataset containing SMILES and IUPAC names.
+        :type table: pa.Table
+        :return: Dictionary mapping property/question names to lists of answers.
+        :rtype: Dict[str, Sequence[Any]]
+        """
         smiles = table.column("smiles").to_pylist()
         answers = calculate_molecular_properties(smiles)
         answers["iupac_name"] = table.column("iupac").to_pylist()
@@ -84,6 +116,20 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
         return answers
 
     def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
+        """
+        Format the answer string for molecular properties.
+
+        :param q: Question dictionary (with templates).
+        :type q: dict
+        :param answers: Dictionary of answers for all molecules.
+        :type answers: dict
+        :param i: Index of the molecule in the dataset.
+        :type i: int
+        :param smile: SMILES string for the molecule.
+        :type smile: str
+        :return: Formatted answer string.
+        :rtype: str
+        """
         ans = answers[q["id"]][i]
         return q["assistant_template"].format(answer=ans)
 
@@ -91,10 +137,18 @@ class AllPropertiesProcessor(QuestionSetProcessor):
     """
     Processor for the comprehensive 'all_properties' question set.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("all_properties")
 
     def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+        """
+        Prepare answers for the comprehensive 'all_properties' question set.
+
+        :param table: Dataset containing SMILES and IUPAC names.
+        :type table: pa.Table
+        :return: Dictionary mapping property/question names to lists of answers.
+        :rtype: Dict[str, Sequence[Any]]
+        """
         smiles = table.column("smiles").to_pylist()
         answers = calculate_molecular_properties(smiles)
         answers["iupac_name"] = table.column("iupac").to_pylist()
@@ -108,10 +162,15 @@ class AllPropertiesProcessor(QuestionSetProcessor):
         Format the answer for the all-properties question (expands all properties into the template).
 
         :param q: Question dictionary.
+        :type q: dict
         :param answers: Dictionary of answers.
+        :type answers: dict
         :param i: Index of the molecule.
+        :type i: int
         :param smile: SMILES string.
+        :type smile: str
         :return: Formatted answer string.
+        :rtype: str
         """
         props = {key: answers[key][i] for key in answers}
         return q["assistant_template"].format(smiles=smile, **props)
@@ -125,7 +184,9 @@ def count_heavy_atoms(smiles: str) -> int:
     Count the number of heavy (non-hydrogen) atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of heavy atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -137,7 +198,9 @@ def count_non_hydrogen_bonds(smiles: str) -> int:
     Count the number of bonds not to hydrogen in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of bonds not to hydrogen in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -149,7 +212,9 @@ def count_positive_formal_charge_atoms(smiles: str) -> int:
     Count the number of atoms with positive formal charge in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of atoms with positive formal charge.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -161,7 +226,9 @@ def count_negative_formal_charge_atoms(smiles: str) -> int:
     Count the number of atoms with negative formal charge in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of atoms with negative formal charge.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -173,8 +240,11 @@ def count_element_atoms(mol: Any, element: str) -> int:
     Count the number of atoms of a specific element in a molecule.
 
     :param mol: RDKit molecule object.
+    :type mol: Any
     :param element: Chemical symbol of the element to count.
+    :type element: str
     :return: Number of atoms of the given element in the molecule.
+    :rtype: int
     """
     return sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == element)
 
@@ -183,7 +253,9 @@ def count_carbon_atoms(smiles: str) -> int:
     Count carbon atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of carbon atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -195,7 +267,9 @@ def count_nitrogen_atoms(smiles: str) -> int:
     Count nitrogen atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of nitrogen atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -207,7 +281,9 @@ def count_oxygen_atoms(smiles: str) -> int:
     Count oxygen atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of oxygen atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -219,7 +295,9 @@ def count_sulfur_atoms(smiles: str) -> int:
     Count sulfur atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of sulfur atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -231,7 +309,9 @@ def count_phosphorus_atoms(smiles: str) -> int:
     Count phosphorus atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of phosphorus atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -243,7 +323,9 @@ def count_chlorine_atoms(smiles: str) -> int:
     Count chlorine atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of chlorine atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -255,7 +337,9 @@ def count_fluorine_atoms(smiles: str) -> int:
     Count fluorine atoms in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of fluorine atoms in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -267,7 +351,9 @@ def count_rings(smiles: str) -> int:
     Count the number of rings in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of rings in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -276,16 +362,12 @@ def count_rings(smiles: str) -> int:
 
 def count_aromatic_rings(smiles: str) -> int:
     """
-    Count the number of aromatic rings in a molecule given its SMILES string.
-
-    :param smiles: SMILES string of the molecule.
-    :return: Number of aromatic rings.
-    """
-    """
     Count the number of aromatic rings in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of aromatic rings in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -305,7 +387,9 @@ def count_double_bonds(smiles: str) -> int:
     Count the number of double bonds in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of double bonds in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -317,7 +401,9 @@ def count_triple_bonds(smiles: str) -> int:
     Count the number of triple bonds in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of triple bonds in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -329,7 +415,9 @@ def count_stereo_double_bonds(smiles: str) -> int:
     Count the number of stereo double bonds (E/Z) in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of stereo (E/Z) double bonds in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -344,7 +432,9 @@ def count_stereocenters(smiles: str) -> int:
     Count the number of stereocenters in a molecule.
 
     :param smiles: SMILES string representation of the molecule.
+    :type smiles: str
     :return: Number of stereocenters in the molecule.
+    :rtype: int
     """
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -381,7 +471,9 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequ
     Calculate various molecular properties for a list of SMILES strings.
 
     :param smiles_list: List of SMILES strings.
+    :type smiles_list: Sequence[str]
     :return: Dictionary mapping property names to lists of property values.
+    :rtype: Dict[str, Sequence[Any]]
     """
     return {
         "carbon_count": [count_carbon_atoms(s) for s in smiles_list],
@@ -413,16 +505,21 @@ def process_single_qa(
 ) -> Dict[str, Any]:
     """
     Process a single question-answer pair from the expanded dataset.
-    
+
     :param tok: Tokenizer instance
+    :type tok: Any
     :param example: Dictionary containing a single Q&A pair with all necessary fields
+    :type example: Dict[str, Any]
     :param max_len: Maximum length for the input
+    :type max_len: int
     :param max_label_len: Maximum length for the label (only used for eval)
+    :type max_label_len: int or None
     :param is_train: Whether this is for training or evaluation
-    :param system_prompt_override: Optional system prompt string. If provided, this
-        is used instead of ``example['system_prompt']`` (which may be absent when
-        loading datasets created without the system_prompt column).
+    :type is_train: bool
+    :param system_prompt_override: Optional system prompt string. If provided, this is used instead of ``example['system_prompt']`` (which may be absent when loading datasets created without the system_prompt column).
+    :type system_prompt_override: str or None
     :return: Dictionary with tokenized input_ids, attention_mask, and labels
+    :rtype: Dict[str, Any]
     """
     # Build the prompt
     if is_train:
@@ -499,18 +596,24 @@ def process_single_qa(
 
 # ─────────────────────────── metrics & helpers ────────────────────────
 
-def find_answer_token_positions(tokenizer, prompt_str, answer_str, input_ids_list, max_len):
+def find_answer_token_positions(tokenizer: Any, prompt_str: str, answer_str: str, input_ids_list: list, max_len: int) -> tuple | None:
     """
     Robustly find the token span in input_ids_list corresponding to answer_str in prompt_str.
     Uses offset mapping if available, otherwise falls back to best-effort substring search.
     Uses the same tokenizer options as main prompt tokenization: padding="max_length", truncation=True, max_length=max_len, return_tensors="np".
-    Returns (start_idx, end_idx) or None if not found.
-    Args:
-        tokenizer: The tokenizer object.
-        prompt_str: The full prompt string.
-        answer_str: The answer string to locate.
-        input_ids_list: The tokenized input_ids list for the prompt.
-        max_len: The max length used for tokenization.
+
+    :param tokenizer: The tokenizer object.
+    :type tokenizer: Any
+    :param prompt_str: The full prompt string.
+    :type prompt_str: str
+    :param answer_str: The answer string to locate.
+    :type answer_str: str
+    :param input_ids_list: The tokenized input_ids list for the prompt.
+    :type input_ids_list: list
+    :param max_len: The max length used for tokenization.
+    :type max_len: int
+    :return: (start_idx, end_idx) or None if not found.
+    :rtype: tuple or None
     """
     # Try to get offset mapping
     try:
@@ -594,7 +697,7 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
     :param tokenizer: Tokenizer instance.
     :return: Metrics computation function.
     """
-    def compute_metrics(eval_preds, compute_result: bool = True):
+    def compute_metrics(eval_preds, compute_result: bool = True) -> dict:
         """
         Compute metrics. With batch_eval_metrics=True, this function is called per batch and at the end with compute_result=True.
         Accumulates predictions and labels across batches, and only computes/returns metrics when compute_result=True.

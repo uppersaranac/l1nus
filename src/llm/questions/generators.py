@@ -24,7 +24,16 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GenerationConfig:
-    """Parsed YAML configuration container."""
+    """
+    Parsed YAML configuration container.
+
+    :param system_prompt: System prompt string.
+    :type system_prompt: str
+    :param question_set: Name of the question set.
+    :type question_set: str
+    :param question_templates: List of QuestionTemplate instances.
+    :type question_templates: List[QuestionTemplate]
+    """
 
     system_prompt: str
     question_set: str
@@ -32,6 +41,14 @@ class GenerationConfig:
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "GenerationConfig":
+        """
+        Create a GenerationConfig from a YAML file.
+
+        :param path: Path to YAML configuration file.
+        :type path: str or Path
+        :return: GenerationConfig instance.
+        :rtype: GenerationConfig
+        """
         with open(path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         q_tmpls = [template_from_dict(d) for d in cfg["questions"]]
@@ -39,33 +56,42 @@ class GenerationConfig:
 
 
 class QuestionGenerator:
-    """Expand raw records into question/answer pairs using *GenerationConfig*."""
+    """
+    Expand raw records into question/answer pairs using *GenerationConfig*.
+
+    :param config: GenerationConfig instance.
+    :type config: GenerationConfig
+    """
 
     def __init__(self, config: GenerationConfig):
+        """
+        Initialize the QuestionGenerator.
+
+        :param config: GenerationConfig instance.
+        :type config: GenerationConfig
+        """
         self.config = config
 
-    # ------------------------------------------------------------------
-    # PUBLIC API
-    # ------------------------------------------------------------------
     def generate(self, table: pa.Table) -> Iterator[Dict[str, Any]]:
-        """Yield a dict per Q-A pair from an Arrow Table.
+        """
+        Yield a dict per Q-A pair from an Arrow Table.
 
         Each output dict contains:
-            question      – rendered user prompt
-            answer        – rendered assistant answer
-            question_id   – template id
-            assistant_template – original assistant template string
-            metadata      – original record as dict (caller can drop large cols)
+            question            rendered user prompt
+            answer              rendered assistant answer
+            question_id         template id
+            assistant_template  original assistant template string
+            metadata            original record as dict (caller can drop large cols)
+
+        :param table: Arrow Table containing data.
+        :type table: pa.Table
+        :yield: Dictionary for each Q-A pair.
+        :rtype: Iterator[Dict[str, Any]]
         """
-        # Iterate row-by-row without converting full table to Python objects
         for i in range(table.num_rows):
-            # Slice returns a Table with 1 row; convert to plain dict
             record = {k: v[0] for k, v in table.slice(i, 1).to_pydict().items()}
             for q_tmpl in self.config.question_templates:
-
-                # Exclude split from metadata & top-level output
                 metadata = {k: v for k, v in record.items() if k != "split"}
-
                 yield {
                     "question_id": q_tmpl.id,
                     "question_template": q_tmpl.user_template,
@@ -74,11 +100,17 @@ class QuestionGenerator:
                     "metadata": metadata,
                 }
 
-    # ------------------------------------------------------------------
-    # CONVENIENCE HELPERS
-    # ------------------------------------------------------------------
     def generate_jsonl(self, table: pa.Table, out_path: str | Path) -> int:
-        """Write JSONL file from an Arrow Table. Returns number of examples written."""
+        """
+        Write JSONL file from an Arrow Table. Returns number of examples written.
+
+        :param table: Arrow Table containing data.
+        :type table: pa.Table
+        :param out_path: Output file path.
+        :type out_path: str or Path
+        :return: Number of examples written.
+        :rtype: int
+        """
         n = 0
         with open(out_path, "w", encoding="utf-8") as f:
             for qa in self.generate(table):

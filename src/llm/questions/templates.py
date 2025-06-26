@@ -32,20 +32,37 @@ __all__ = [
 
 @dataclass
 class QuestionTemplate:
-    """A lightweight question/answer template wrapper."""
+    """
+    A lightweight question/answer template wrapper.
+
+    :param id: Unique template identifier.
+    :type id: str
+    :param user_template: User-facing question template string.
+    :type user_template: str
+    :param assistant_template: Assistant answer template string.
+    :type assistant_template: str
+    :param type: Template type (e.g., mcq, fill_blank, freeform, etc.).
+    :type type: str
+    :param extras: Arbitrary extra fields from YAML.
+    :type extras: Dict[str, Any]
+    """
 
     id: str
     user_template: str
     assistant_template: str
     type: str = "generic"  # mcq | fill_blank | freeform | etc.
-    # We allow arbitrary extra fields from YAML
     extras: Dict[str, Any] = field(default_factory=dict)
 
-    # ------------------------------------------------------------------
-    # YAML helpers
-    # ------------------------------------------------------------------
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "QuestionTemplate":
+        """
+        Create a QuestionTemplate instance from a dictionary.
+
+        :param d: Dictionary with template fields.
+        :type d: Dict[str, Any]
+        :return: QuestionTemplate instance.
+        :rtype: QuestionTemplate
+        """
         known_keys = {"id", "user_template", "assistant_template", "type"}
         extras = {k: v for k, v in d.items() if k not in known_keys}
         return cls(
@@ -56,7 +73,13 @@ class QuestionTemplate:
             extras=extras,
         )
 
-
 def template_from_dict(d: Dict[str, Any]) -> QuestionTemplate:
-    """Factory so external code can stay generic in the future."""
+    """
+    Factory so external code can stay generic in the future.
+
+    :param d: Dictionary with template fields.
+    :type d: Dict[str, Any]
+    :return: QuestionTemplate instance.
+    :rtype: QuestionTemplate
+    """
     return QuestionTemplate.from_dict(d)

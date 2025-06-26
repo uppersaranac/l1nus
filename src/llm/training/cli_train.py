@@ -37,6 +37,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _parse_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments for fine-tuning a causal-LM on a prepared dataset.
+
+    :return: Parsed arguments namespace.
+    :rtype: argparse.Namespace
+    """
     p = argparse.ArgumentParser(description="Fine-tune a causal-LM on prepared dataset")
     p.add_argument("--dataset_dir", required=True, help="Directory with 'full/' & 'minimal/' sub-dirs")
     p.add_argument("--model_name", required=True, help="HF model checkpoint to fine-tune")
@@ -60,8 +66,27 @@ def _parse_args() -> argparse.Namespace:
 # Main
 # ---------------------------------------------------------------------------
 
-def _evaluate(accelerator: Accelerator, model, dataloader, tokenizer, compute_metrics, max_new_tokens: int, num_examples: int = 100) -> dict:
-    """Run generation-based evaluation and log exact-match metric."""
+def _evaluate(accelerator: Accelerator, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100) -> dict:
+    """
+    Run generation-based evaluation and log exact-match metric.
+
+    :param accelerator: Accelerator instance.
+    :type accelerator: Accelerator
+    :param model: Model instance.
+    :type model: Any
+    :param dataloader: DataLoader instance.
+    :type dataloader: Any
+    :param tokenizer: Tokenizer instance.
+    :type tokenizer: Any
+    :param compute_metrics: Metrics computation function.
+    :type compute_metrics: Any
+    :param max_new_tokens: Maximum number of new tokens.
+    :type max_new_tokens: int
+    :param num_examples: Number of examples to evaluate.
+    :type num_examples: int
+    :return: Dictionary of evaluation metrics.
+    :rtype: dict
+    """
     model.eval()
     # Only evaluate over the first num_examples examples in the dataloader
     num_processed = 0

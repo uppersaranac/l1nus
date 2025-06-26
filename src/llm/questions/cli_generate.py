@@ -32,14 +32,22 @@ logging.basicConfig(level=logging.INFO)
 # ---------------------------------------------------------------------------
 
 def _load_table(path: Path, limit: int | None = None) -> pa.Table:
-    """Load tabular data as a **memory-mapped** Arrow Table.
+    """
+    Load tabular data as a **memory-mapped** Arrow Table.
 
     Supported extensions:
-      • .arrow   – Arrow IPC random-access file (zero-copy mmap)
-      • .parquet – Parquet file
-      • .csv     – Comma-separated values
-      • .tsv     – Tab-separated values
-      • .jsonl/.json – Newline-delimited JSON
+      • .arrow   Arrow IPC random-access file (zero-copy mmap)
+      • .parquet Parquet file
+      • .csv     Comma-separated values
+      • .tsv     Tab-separated values
+      • .jsonl/.json Newline-delimited JSON
+
+    :param path: Path to the input file.
+    :type path: Path
+    :param limit: Optionally limit the number of records.
+    :type limit: int or None
+    :return: Arrow Table containing the data.
+    :rtype: pa.Table
     """
     suffix = path.suffix.lower()
 
@@ -65,6 +73,12 @@ def _load_table(path: Path, limit: int | None = None) -> pa.Table:
 
 
 def _parse_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments for question generation CLI.
+
+    :return: Parsed arguments namespace.
+    :rtype: argparse.Namespace
+    """
     p = argparse.ArgumentParser(description="Generate questions JSONL from raw data + YAML config")
     p.add_argument("--input", required=True, help="Path to raw tabular file (csv, tsv, jsonl, parquet, arrow)")
     p.add_argument("--config", required=True, help="YAML file describing question templates and system_prompt")
@@ -85,6 +99,9 @@ def _parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    """
+    Main entry point for the question generation CLI.
+    """
     args = _parse_args()
     input_path = Path(args.input).expanduser()
     output_path = Path(args.output).expanduser()
