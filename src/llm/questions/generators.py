@@ -12,7 +12,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Sequence
+from typing import Any, Dict, Iterator, List
 
 import pyarrow as pa
 import yaml

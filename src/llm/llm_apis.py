@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
-import random
-from pathlib import Path
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Sequence, Callable
 
 import evaluate
 import logging
@@ -11,10 +9,8 @@ import numpy as np
 import pyarrow as pa
 import re
 import torch
-from datasets import Dataset
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
-from transformers import TrainerCallback
 
 
 # Processor to handle different question sets
@@ -106,7 +102,7 @@ class AllPropertiesProcessor(QuestionSetProcessor):
         return answers
 
 
-def evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100) -> dict:
+def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100) -> dict:
     """
     Run generation-based evaluation and log exact-match metric.
 
@@ -438,29 +434,6 @@ def count_stereocenters(smiles: str) -> int:
         return 0
     return rdMolDescriptors.CalcNumAtomStereoCenters(mol)
 
-def count_positive_formal_charge_atoms(smiles: str) -> int:
-    """
-    Count the number of atoms with positive formal charge in a molecule.
-
-    :param smiles: SMILES string representation of the molecule.
-    :return: Number of atoms with positive formal charge in the molecule.
-    """
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        return 0
-    return sum(1 for atom in mol.GetAtoms() if atom.GetFormalCharge() > 0)
-
-def count_negative_formal_charge_atoms(smiles: str) -> int:
-    """
-    Count the number of atoms with negative formal charge in a molecule.
-
-    :param smiles: SMILES string representation of the molecule.
-    :return: Number of atoms with negative formal charge in the molecule.
-    """
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
-        return 0
-    return sum(1 for atom in mol.GetAtoms() if atom.GetFormalCharge() < 0)
 
 # Function to calculate all properties for a set of molecules
 def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequence[Any]]:
@@ -721,10 +694,10 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             decoded_preds = tokenizer.batch_decode(filtered_preds, skip_special_tokens=True)
             decoded_labels = tokenizer.batch_decode(filtered_labels, skip_special_tokens=True)
             decoded_preds = [_norm(p) for p in decoded_preds]
-            decoded_labels = [_norm(l) for l in decoded_labels]
+            decoded_labels = [_norm(label) for label in decoded_labels]
             compute_metrics.all_preds.extend(decoded_preds)
             compute_metrics.all_labels.extend(decoded_labels)
-        except OverflowError as e:
+        except OverflowError:
             print(f"OverflowError: {preds}")
         
         if compute_result:

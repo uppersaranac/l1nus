@@ -11,10 +11,9 @@ from pathlib import Path
 
 from accelerate import Accelerator
 from datasets import load_from_disk
-from llm.llm_apis import compute_metrics_closure, evaluate, do_generation
+from llm.llm_apis import compute_metrics_closure, do_evaluate, do_generation
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate a causal-LM on a prepared dataset")
     parser.add_argument("--dataset_dir", required=True, help="Directory with the dataset to evaluate")
     parser.add_argument("--model_name", required=True, help="HF model checkpoint to evaluate")
-    parser.add_argument("--split", default="test", choices=["test", "validation", "val"], help="Dataset split to evaluate")
+    parser.add_argument("--split", default="test", choices=["test", "valid", "val"], help="Dataset split to evaluate")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size for evaluation")
     parser.add_argument("--max_new_tokens", type=int, default=1024, help="Maximum number of new tokens to generate")
     parser.add_argument("--limit", type=int, default=None, help="If set, truncate the evaluation set to this many examples")
@@ -38,7 +37,7 @@ def main() -> None:
     ds = load_from_disk(args.dataset_dir)
     split = args.split
     if split == "val":
-        split = "validation"
+        split = "valid"
     if split not in ds:
         raise ValueError(f"Split '{split}' not found in dataset at {args.dataset_dir}")
     dataset = ds[split]
@@ -55,7 +54,7 @@ def main() -> None:
     dataloader = accelerator.prepare(dataloader)
 
     compute_metrics = compute_metrics_closure(tokenizer)
-    metrics = evaluate(
+    metrics = do_evaluate(
         accelerator,
         model,
         dataloader,

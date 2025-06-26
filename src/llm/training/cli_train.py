@@ -13,8 +13,8 @@ import math
 from pathlib import Path
 
 from accelerate import Accelerator, DistributedDataParallelKwargs
-from datasets import Dataset, load_from_disk
-from llm.llm_apis import compute_metrics_closure, do_generation
+from datasets import load_from_disk
+from llm.llm_apis import compute_metrics_closure, do_evaluate
 from torch.utils.data import DataLoader  # local import to avoid circular issues
 from tqdm import tqdm
 from transformers import (
@@ -167,8 +167,7 @@ def main() -> None:
                     logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, last_loss)
 
             if global_step % args.eval_steps == 0 and global_step != 0:
-                from llm.llm_apis import evaluate
-                eval_metrics = evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
+                eval_metrics = do_evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
                 if not args.no_tqdm and hasattr(train_iter, 'set_postfix') and eval_metrics is not None:
                     metric_val = eval_metrics.get('exact_match', None)
                     if metric_val is not None:
@@ -177,8 +176,7 @@ def main() -> None:
             global_step += 1
 
         # ----- end-of-epoch evaluation & best-model saving -----
-        from llm.llm_apis import evaluate
-        epoch_metrics = evaluate(
+        epoch_metrics = do_evaluate(
             accelerator,
             model,
             eval_loader,
@@ -205,9 +203,15 @@ def main() -> None:
                 tokenizer.save_pretrained(best_dir)
 
     # Final evaluation and save ---------------------------------------
-    from llm.llm_apis import evaluate
-    evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
-
+    epoch_metrics = do_evaluate(
+        accelerator,
+        model,
+        eval_loader,
+        tokenizer,
+        compute_metrics,
+        args.max_new_tokens,
+        args.eval_num_examples,
+    )
     if accelerator.is_main_process:
         unwrapped = accelerator.unwrap_model(model)
         out_dir = Path(args.output_dir).expanduser()

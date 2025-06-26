@@ -1,7 +1,7 @@
 """Generic question template definitions.
 
 These classes are intentionally simple and domain-agnostic. They only know
-about *string templating* – they do **not** know how to calculate an answer for
+about *string templating* and **do not** know how to calculate an answer for
 any particular domain (chemistry, maths, etc.).
 
 A template record comes from YAML and contains at minimum:
@@ -22,7 +22,6 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from string import Template
 from typing import Any, Dict
 
 __all__ = [
