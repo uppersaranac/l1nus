@@ -37,23 +37,6 @@ class QuestionSetProcessor:
         """
         raise NotImplementedError
 
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        """
-        Format the answer string for a specific question and molecule.
-
-        :param q: Question dictionary (with templates).
-        :type q: dict
-        :param answers: Dictionary of answers for all molecules.
-        :type answers: dict
-        :param i: Index of the molecule in the dataset.
-        :type i: int
-        :param smile: SMILES string for the molecule.
-        :type smile: str
-        :return: Formatted answer string.
-        :rtype: str
-        """
-        raise NotImplementedError
-
 class IUPACNamingProcessor(QuestionSetProcessor):
     """
     Processor for the IUPAC naming question set.
@@ -73,23 +56,6 @@ class IUPACNamingProcessor(QuestionSetProcessor):
         import pyarrow as pa
         return {"iupac_name": table.column("iupac").to_pylist()}
 
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        """
-        Format the answer string for IUPAC naming.
-
-        :param q: Question dictionary (with templates).
-        :type q: dict
-        :param answers: Dictionary of answers for all molecules.
-        :type answers: dict
-        :param i: Index of the molecule in the dataset.
-        :type i: int
-        :param smile: SMILES string for the molecule.
-        :type smile: str
-        :return: Formatted answer string.
-        :rtype: str
-        """
-        ans = answers[q["id"]][i]
-        return q["assistant_template"].format(answer=ans)
 
 class MolecularPropertiesProcessor(QuestionSetProcessor):
     """
@@ -115,23 +81,6 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
             answers[k] = [str(x) for x in answers[k]]
         return answers
 
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        """
-        Format the answer string for molecular properties.
-
-        :param q: Question dictionary (with templates).
-        :type q: dict
-        :param answers: Dictionary of answers for all molecules.
-        :type answers: dict
-        :param i: Index of the molecule in the dataset.
-        :type i: int
-        :param smile: SMILES string for the molecule.
-        :type smile: str
-        :return: Formatted answer string.
-        :rtype: str
-        """
-        ans = answers[q["id"]][i]
-        return q["assistant_template"].format(answer=ans)
 
 class AllPropertiesProcessor(QuestionSetProcessor):
     """
@@ -156,24 +105,6 @@ class AllPropertiesProcessor(QuestionSetProcessor):
         for k in answers:
             answers[k] = [str(x) for x in answers[k]]
         return answers
-
-    def format_answer(self, q: dict, answers: dict, i: int, smile: str) -> str:
-        """
-        Format the answer for the all-properties question (expands all properties into the template).
-
-        :param q: Question dictionary.
-        :type q: dict
-        :param answers: Dictionary of answers.
-        :type answers: dict
-        :param i: Index of the molecule.
-        :type i: int
-        :param smile: SMILES string.
-        :type smile: str
-        :return: Formatted answer string.
-        :rtype: str
-        """
-        props = {key: answers[key][i] for key in answers}
-        return q["assistant_template"].format(smiles=smile, **props)
 
 
 # =================================================
