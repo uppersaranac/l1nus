@@ -63,84 +63,6 @@ def _parse_args() -> argparse.Namespace:
 # Main
 # ---------------------------------------------------------------------------
 
-def _evaluate(accelerator: Accelerator, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100) -> dict:
-    """
-    Run generation-based evaluation and log exact-match metric.
-
-    :param accelerator: Accelerator instance.
-    :type accelerator: Accelerator
-    :param model: Model instance.
-    :type model: Any
-    :param dataloader: DataLoader instance.
-    :type dataloader: Any
-    :param tokenizer: Tokenizer instance.
-    :type tokenizer: Any
-    :param compute_metrics: Metrics computation function.
-    :type compute_metrics: Any
-    :param max_new_tokens: Maximum number of new tokens.
-    :type max_new_tokens: int
-    :param num_examples: Number of examples to evaluate.
-    :type num_examples: int
-    :return: Dictionary of evaluation metrics.
-    :rtype: dict
-    """
-    model.eval()
-    # Only evaluate over the first num_examples examples in the dataloader
-    num_processed = 0
-    for batch in dataloader:
-        batch_size = batch["input_ids"].size(0)
-        # If adding this batch would exceed num_examples, trim the batch
-        if num_processed + batch_size > num_examples:
-            trim = num_examples - num_processed
-            for k in batch:
-                batch[k] = batch[k][:trim]
-            batch_size = trim
-        with torch.no_grad():
-            # If the model is wrapped (e.g. DistributedDataParallel), unwrap to access `generate`
-            generated = accelerator.unwrap_model(model).generate(
-                input_ids=batch["input_ids"],
-                attention_mask=batch["attention_mask"],
-                max_new_tokens=max_new_tokens,
-            )
-        # pad so all ranks have the same seq-length, otherwise will hang
-        generated_padded = accelerator.pad_across_processes(
-                generated, dim=1, pad_index=tokenizer.pad_token_id)
-        labels_padded = accelerator.pad_across_processes(
-                batch["labels"], dim=1, pad_index=-100)
-
-        # Gather across processes so that metric is computed on full set
-        gen_all    = accelerator.gather(generated_padded)
-        labels_all = accelerator.gather(labels_padded)
-
-        # Stream into metric accumulator (compute_result=False)
-        compute_metrics((gen_all.cpu().numpy(), labels_all.cpu().numpy()), compute_result=False)
-        num_processed += batch_size
-        if num_processed >= num_examples:
-            break
-    # Finalise metric
-    metrics = compute_metrics((torch.empty(0), torch.empty(0)), compute_result=True)
-    if accelerator.is_main_process:
-
-        # ---- log example predictions ----
-        try:
-            sample_ds = dataloader.dataset.select(range(min(num_examples, len(dataloader.dataset))))
-            preds = do_generation(
-                max_new_tokens,
-                tokenizer,
-                accelerator.unwrap_model(model).eval(),
-                sample_ds,
-            )
-            # decode gold labels
-            sample_ds.set_format(type="torch", columns=["labels"])
-            labels_tensor = sample_ds["labels"].masked_fill(sample_ds["labels"] == -100, tokenizer.pad_token_id)
-            gold = tokenizer.batch_decode(labels_tensor, skip_special_tokens=True)
-            for i, (g_pred, g_gold) in enumerate(zip(preds, gold)):
-                logger.info("\nEXAMPLE %d \n PRED: %s \n GOLD: %s\n", i, g_pred, g_gold)
-        except Exception as e:
-            logger.warning("Failed to generate example predictions: %s", e)
-
-    model.train()
-    return metrics
 
 
 def main() -> None:
@@ -245,7 +167,8 @@ def main() -> None:
                     logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, last_loss)
 
             if global_step % args.eval_steps == 0 and global_step != 0:
-                eval_metrics = _evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
+                from llm.llm_apis import evaluate
+                eval_metrics = evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
                 if not args.no_tqdm and hasattr(train_iter, 'set_postfix') and eval_metrics is not None:
                     metric_val = eval_metrics.get('exact_match', None)
                     if metric_val is not None:
@@ -254,7 +177,8 @@ def main() -> None:
             global_step += 1
 
         # ----- end-of-epoch evaluation & best-model saving -----
-        epoch_metrics = _evaluate(
+        from llm.llm_apis import evaluate
+        epoch_metrics = evaluate(
             accelerator,
             model,
             eval_loader,
@@ -281,7 +205,8 @@ def main() -> None:
                 tokenizer.save_pretrained(best_dir)
 
     # Final evaluation and save ---------------------------------------
-    _evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
+    from llm.llm_apis import evaluate
+    evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
 
     if accelerator.is_main_process:
         unwrapped = accelerator.unwrap_model(model)

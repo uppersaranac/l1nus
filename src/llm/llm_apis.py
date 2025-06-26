@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Sequence
+from typing import Any, Dict, Sequence
 
 import evaluate
+import logging
 import numpy as np
+import pyarrow as pa
+import re
 import torch
 from datasets import Dataset
 from rdkit import Chem
@@ -25,7 +28,7 @@ class QuestionSetProcessor:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
         """
         Prepare answers for the question set from a dataset.
 
@@ -43,7 +46,7 @@ class IUPACNamingProcessor(QuestionSetProcessor):
     def __init__(self) -> None:
         super().__init__("iupac_naming")
 
-    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
         """
         Prepare answers for IUPAC naming (just returns the IUPAC names).
 
@@ -52,7 +55,6 @@ class IUPACNamingProcessor(QuestionSetProcessor):
         :return: Dictionary with 'iupac_name' mapped to the list of names.
         :rtype: Dict[str, Sequence[Any]]
         """
-        import pyarrow as pa
         return {"iupac_name": table.column("iupac").to_pylist()}
 
 
@@ -63,12 +65,11 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
     def __init__(self) -> None:
         super().__init__("molecular_properties")
 
-    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
         """
         Prepare answers for molecular properties.
 
         :param table: Dataset containing SMILES and IUPAC names.
-        :type table: pa.Table
         :return: Dictionary mapping property/question names to lists of answers.
         :rtype: Dict[str, Sequence[Any]]
         """
@@ -88,12 +89,11 @@ class AllPropertiesProcessor(QuestionSetProcessor):
     def __init__(self) -> None:
         super().__init__("all_properties")
 
-    def prepare_answers(self, table: 'pa.Table') -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
         """
         Prepare answers for the comprehensive 'all_properties' question set.
 
         :param table: Dataset containing SMILES and IUPAC names.
-        :type table: pa.Table
         :return: Dictionary mapping property/question names to lists of answers.
         :rtype: Dict[str, Sequence[Any]]
         """
@@ -105,6 +105,73 @@ class AllPropertiesProcessor(QuestionSetProcessor):
             answers[k] = [str(x) for x in answers[k]]
         return answers
 
+
+def evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100) -> dict:
+    """
+    Run generation-based evaluation and log exact-match metric.
+
+    :param accelerator: Accelerator instance.
+    :type accelerator: Accelerator
+    :param model: Model instance.
+    :type model: Any
+    :param dataloader: DataLoader instance.
+    :type dataloader: Any
+    :param tokenizer: Tokenizer instance.
+    :type tokenizer: Any
+    :param compute_metrics: Metrics computation function.
+    :type compute_metrics: Any
+    :param max_new_tokens: Maximum number of new tokens.
+    :type max_new_tokens: int
+    :param num_examples: Number of examples to evaluate.
+    :type num_examples: int
+    :return: Dictionary of evaluation metrics.
+    :rtype: dict
+    """
+    logger = logging.getLogger(__name__)
+    model.eval()
+    num_processed = 0
+    for batch in dataloader:
+        batch_size = batch["input_ids"].size(0)
+        if num_processed + batch_size > num_examples:
+            trim = num_examples - num_processed
+            for k in batch:
+                batch[k] = batch[k][:trim]
+            batch_size = trim
+        with torch.no_grad():
+            generated = accelerator.unwrap_model(model).generate(
+                input_ids=batch["input_ids"],
+                attention_mask=batch["attention_mask"],
+                max_new_tokens=max_new_tokens,
+            )
+        generated_padded = accelerator.pad_across_processes(
+                generated, dim=1, pad_index=tokenizer.pad_token_id)
+        labels_padded = accelerator.pad_across_processes(
+                batch["labels"], dim=1, pad_index=-100)
+        gen_all    = accelerator.gather(generated_padded)
+        labels_all = accelerator.gather(labels_padded)
+        compute_metrics((gen_all.cpu().numpy(), labels_all.cpu().numpy()), compute_result=False)
+        num_processed += batch_size
+        if num_processed >= num_examples:
+            break
+    metrics = compute_metrics((torch.empty(0), torch.empty(0)), compute_result=True)
+    if accelerator.is_main_process:
+        try:
+            sample_ds = dataloader.dataset.select(range(min(num_examples, len(dataloader.dataset))))
+            preds = do_generation(
+                max_new_tokens,
+                tokenizer,
+                accelerator.unwrap_model(model).eval(),
+                sample_ds,
+            )
+            sample_ds.set_format(type="torch", columns=["labels"])
+            labels_tensor = sample_ds["labels"].masked_fill(sample_ds["labels"] == -100, tokenizer.pad_token_id)
+            gold = tokenizer.batch_decode(labels_tensor, skip_special_tokens=True)
+            for i, (g_pred, g_gold) in enumerate(zip(preds, gold)):
+                logger.info("\nEXAMPLE %d \n PRED: %s \n GOLD: %s\n", i, g_pred, g_gold)
+        except Exception as e:
+            logger.warning("Failed to generate example predictions: %s", e)
+    model.train()
+    return metrics
 
 # =================================================
 # Molecular Property Functions
@@ -562,7 +629,6 @@ def find_answer_token_positions(tokenizer: Any, prompt_str: str, answer_str: str
             answer_start = prompt_str.find(answer_str)
             if answer_start == -1:
                 # Try to ignore whitespace differences
-                import re
                 match = re.search(re.escape(answer_str.strip()), prompt_str)
                 if match:
                     answer_start = match.start()
@@ -607,16 +673,11 @@ def _norm(s: str) -> str:
     :param s: Input string.
     :return: Normalized string.
     """
-    import re
-    # Extract all \boxed{...} answers
-    #boxed = re.findall(r"\\boxed\{\{?(.*?)\}?\}", s)
-    # Extract all <result>...</result> answers
+    # Extract all answers
     results = re.findall(r"<\|extra_100\|>(.*?)<\|extra_101\|>", s)
-    #values = boxed + results
     if results:
         # Join all extracted values with '|', strip whitespace and trailing periods
-        return results[-1].strip().rstrip('.') if results else ''
-
+        return results[-1].strip().rstrip('.')
     return s.strip().rstrip('.')
 
 
