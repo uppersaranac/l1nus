@@ -42,16 +42,18 @@ class IUPACNamingProcessor(QuestionSetProcessor):
     def __init__(self) -> None:
         super().__init__("iupac_naming")
 
-    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[Dict[str, Sequence[Any]], list[bool]]:
         """
-        Prepare answers for IUPAC naming (just returns the IUPAC names).
+        Prepare answers for IUPAC naming (just returns the IUPAC names) and a validity mask.
 
         :param table: Dataset containing IUPAC names.
         :type table: pa.Table
-        :return: Dictionary with 'iupac_name' mapped to the list of names.
-        :rtype: Dict[str, Sequence[Any]]
+        :return: Tuple of (answer dict, mask) where mask is True for valid names.
+        :rtype: Tuple[Dict[str, Sequence[Any]], List[bool]]
         """
-        return {"iupac_name": table.column("iupac").to_pylist()}
+        iupac_list = table.column("iupac").to_pylist()
+        mask = [x is not None and str(x).strip() != "" for x in iupac_list]
+        return {"iupac_name": iupac_list}, mask
 
 
 class MolecularPropertiesProcessor(QuestionSetProcessor):
@@ -61,13 +63,10 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
     def __init__(self) -> None:
         super().__init__("molecular_properties")
 
-    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[Dict[str, Sequence[Any]], list[bool]]:
         """
         Prepare answers for molecular properties.
-
-        :param table: Dataset containing SMILES and IUPAC names.
-        :return: Dictionary mapping property/question names to lists of answers.
-        :rtype: Dict[str, Sequence[Any]]
+        Returns a mask indicating which rows are valid (all properties present and not None/empty).
         """
         smiles = table.column("smiles").to_pylist()
         answers = calculate_molecular_properties(smiles)
@@ -75,7 +74,9 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
         # Ensure all answers are lists of strings
         for k in answers:
             answers[k] = [str(x) for x in answers[k]]
-        return answers
+        n = len(smiles)
+        mask = [all(str(answers[k][i]).strip() != "" and answers[k][i] is not None for k in answers) for i in range(n)]
+        return answers, mask
 
 
 class AllPropertiesProcessor(QuestionSetProcessor):
@@ -85,13 +86,10 @@ class AllPropertiesProcessor(QuestionSetProcessor):
     def __init__(self) -> None:
         super().__init__("all_properties")
 
-    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[Dict[str, Sequence[Any]], list[bool]]:
         """
         Prepare answers for the comprehensive 'all_properties' question set.
-
-        :param table: Dataset containing SMILES and IUPAC names.
-        :return: Dictionary mapping property/question names to lists of answers.
-        :rtype: Dict[str, Sequence[Any]]
+        Returns a mask indicating which rows are valid (all properties present and not None/empty).
         """
         smiles = table.column("smiles").to_pylist()
         answers = calculate_molecular_properties(smiles)
@@ -99,7 +97,9 @@ class AllPropertiesProcessor(QuestionSetProcessor):
         # Ensure all answers are lists of strings
         for k in answers:
             answers[k] = [str(x) for x in answers[k]]
-        return answers
+        n = len(smiles)
+        mask = [all(str(answers[k][i]).strip() != "" and answers[k][i] is not None for k in answers) for i in range(n)]
+        return answers, mask
 
 
 def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100) -> dict:

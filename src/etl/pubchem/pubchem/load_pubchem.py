@@ -1,12 +1,10 @@
 import argparse
 import glob
 import gzip
-import os
 import sys
 from rdkit import Chem
 import pyarrow as pa
 import pyarrow.ipc as ipc
-from pathlib import Path
 from multiprocessing import Pool, cpu_count
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 

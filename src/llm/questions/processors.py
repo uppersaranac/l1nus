@@ -21,6 +21,7 @@ from llm.llm_apis import (
     MolecularPropertiesProcessor,
     QuestionSetProcessor,
 )
+from llm.structure_processor import StructureProcessor
 from typing import Dict, Type
 
 # Public mapping identical to original
@@ -28,6 +29,7 @@ PROCESSOR_CLASSES: Dict[str, Type[QuestionSetProcessor]] = {
     "all_properties": AllPropertiesProcessor,
     "iupac_naming": IUPACNamingProcessor,
     "molecular_properties": MolecularPropertiesProcessor,
+    "structure": StructureProcessor,
 }
 """
 Dictionary mapping question set names to their processor classes.
@@ -39,6 +41,8 @@ __all__ = [
     "AllPropertiesProcessor",
     "IUPACNamingProcessor",
     "MolecularPropertiesProcessor",
+    "StructureProcessor",
     "PROCESSOR_CLASSES",
+    "StructureProcessor",
     "QuestionSetProcessor",
 ]
