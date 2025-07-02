@@ -58,9 +58,32 @@ class StructureProcessor(QuestionSetProcessor):
         n = len(smiles_col)
 
         # Pre-compute RDKit molecules and derived properties
-        mols = [Chem.MolFromSmiles(s) for s in smiles_col]
-        formulas = table.column("formula").to_pylist()
-        key_prefixes = [Chem.MolToInchiKey(m).split("-")[0] if m else None for m in mols]
+        formulas_all = table.column("formula").to_pylist()
+        mols = []
+        formulas = []
+        key_prefixes = []
+        smiles_filtered = []
+        for s, f in zip(smiles_col, formulas_all):
+            mol = Chem.MolFromSmiles(s)
+            if mol is None:
+                mols.append(None)
+                formulas.append(None)
+                key_prefixes.append(None)
+                smiles_filtered.append(None)
+                continue
+            try:
+                key_prefix = Chem.MolToInchiKey(mol).split("-")[0]
+            except Exception:
+                mols.append(None)
+                formulas.append(None)
+                key_prefixes.append(None)
+                smiles_filtered.append(None)
+                continue
+            mols.append(mol)
+            formulas.append(f)
+            key_prefixes.append(key_prefix)
+            smiles_filtered.append(s)
+        # If needed, replace smiles_col with smiles_filtered below for further processing
 
         # Build mapping formula → list[indices]
         formula_to_indices: Dict[str, List[int]] = {}
@@ -81,13 +104,8 @@ class StructureProcessor(QuestionSetProcessor):
         rng = random.Random()
 
         for i in range(n):
-            mol_i = mols[i]
-            formula_i = formulas[i]
-            prefix_i = key_prefixes[i]
-            orig_smiles = smiles_col[i]
 
-            # Default blanks for invalid records
-            if mol_i is None or formula_i is None or prefix_i is None:
+            if mols[i] is None:
                 smiles_A.append("")
                 smiles_B.append("")
                 smiles_C.append("")
@@ -97,7 +115,7 @@ class StructureProcessor(QuestionSetProcessor):
                 continue
 
             # Candidate indices: same formula, different connectivity block
-            candidates = [j for j in formula_to_indices.get(formula_i, []) if j != i and key_prefixes[j] != prefix_i]
+            candidates = [j for j in formula_to_indices.get(formulas[i], []) if j != i and key_prefixes[j] != key_prefixes[i]]
 
             if not candidates:
                 smiles_A.append("")
@@ -111,13 +129,21 @@ class StructureProcessor(QuestionSetProcessor):
             # If <3 unique candidates, sample with replacement to reach 3
             if len(candidates) >= 3:
                 decoy_indices = rng.sample(candidates, 3)
+                decoy_smiles = [smiles_col[j] for j in decoy_indices]
             else:
-                decoy_indices = rng.choices(candidates, k=3)
-
-            decoy_smiles = [smiles_col[j] for j in decoy_indices]
+                # Use all available candidates first
+                decoy_indices = list(candidates)
+                decoy_smiles = [smiles_col[j] for j in decoy_indices]
+                # Generate additional decoys using _noncanonical_smiles
+                while len(decoy_smiles) < 3:
+                    idx = rng.choice(candidates)
+                    mol = mols[idx]
+                    orig_smiles = smiles_col[idx]
+                    new_smiles = self._noncanonical_smiles(mol, orig_smiles)
+                    decoy_smiles.append(new_smiles)
 
             # Randomised correct SMILES representation
-            correct_smiles = self._noncanonical_smiles(mol_i, orig_smiles)
+            correct_smiles = self._noncanonical_smiles(mols[i], smiles_filtered[i])
 
             choices = decoy_smiles + [correct_smiles]
             rng.shuffle(choices)

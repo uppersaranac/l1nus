@@ -87,7 +87,7 @@ def main() -> None:
     train_dataset = ds_min["train"]
     if args.limit is not None and args.limit > 0:
         train_dataset = train_dataset.select(range(args.limit))
-    eval_dataset = ds_min["valid"].select(range(args.eval_num_examples))
+    eval_dataset = ds_min["valid"].shuffle(seed=42).select(range(args.eval_num_examples))
 
     # ---------------- model & optim ----------------
     model_name = Path(args.model_name).expanduser()

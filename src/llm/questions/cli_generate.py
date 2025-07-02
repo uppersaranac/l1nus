@@ -138,25 +138,17 @@ def main() -> None:
 
         proc = proc_cls()
         result = proc.prepare_answers(table)
-        if isinstance(result, tuple) and len(result) == 2:
-            answers, mask = result
-            import pyarrow as pa
-            mask_array = pa.array(mask)
-            table = table.filter(mask_array)
-            # Also filter the answers to match
-            for col, values in answers.items():
-                filtered_values = [v for v, m in zip(values, mask) if m]
-                if col in table.column_names:
-                    table = table.remove_column(table.column_names.index(col))
-                table = table.append_column(col, pa.array(filtered_values))
-        else:
-            answers = result
-            for col, values in answers.items():
-                if col in table.column_names:
-                    table = table.remove_column(table.column_names.index(col))
-                table = table.append_column(col, pa.array(values))
-        logger.info("Computed answer columns via %s", qs_name)
+        answers, mask = result
+        mask_array = pa.array(mask)
+        table = table.filter(mask_array)
+        # Also filter the answers to match
+        for col, values in answers.items():
+            filtered_values = [v for v, m in zip(values, mask) if m]
+            if col in table.column_names:
+                table = table.remove_column(table.column_names.index(col))
+            table = table.append_column(col, pa.array(filtered_values))
 
+        logger.info("Computed answer columns via %s", qs_name)
 
     gen = QuestionGenerator(cfg)
     logger.info("Generating questions…")
