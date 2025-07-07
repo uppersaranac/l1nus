@@ -10,8 +10,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--input", default="~/data/pubchem/arrow/pubchem_sorted.arrow", help="Path to raw tabular file (csv, tsv, jsonl, parquet)")
     p.add_argument("--output", default="~/data/pubchem/arrow/pubchem_best.arrow", help="Destination JSONL file (one Q-A per line)")
     p.add_argument("--filter", default="~/data/pubchem/arrow/pccompound_best.txt", help="file containing list of CIDs to filter, one per line")
-    p.add_argument("--valid-frac", type=float, default=0.05, help="Validation split fraction (before expansion)")
-    p.add_argument("--test-frac", type=float, default=0.05, help="Test split fraction (before expansion)")
+    p.add_argument("--valid-frac", type=float, default=0.025, help="Validation split fraction (before expansion)")
+    p.add_argument("--test-frac", type=float, default=0.025, help="Test split fraction (before expansion)")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
