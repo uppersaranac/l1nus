@@ -30,9 +30,9 @@ export ARGS="--limit 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 2 \
---num_train_epochs 10 \
+--num_train_epochs 8 \
 --eval_steps 10000 \
---eval_num_examples 8 \
+--eval_num_examples 64 \
 --dataset_dir ~/data/pubchem/arrow/pubchem_best_cluster_iupac_naming \
 --model_name ~/results/252674 \
 "
