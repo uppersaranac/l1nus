@@ -11,7 +11,6 @@ import random
 
 import pyarrow as pa
 from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors
 
 from llm.llm_apis import QuestionSetProcessor
 
