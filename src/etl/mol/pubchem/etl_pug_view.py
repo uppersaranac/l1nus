@@ -7,21 +7,27 @@ import json
 import argparse
 import gzip
 
-def download_pubchem_summaries(start_cid, end_cid, output_dir, state_file, cids_per_file, cids_per_second, throttle_wait_time):
+def download_pubchem_summaries(cid_list_file, output_dir, state_file, cids_per_file, cids_per_second, throttle_wait_time):
     base_url = "https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/{}/JSON"
     delay_between_requests = 1.0 / cids_per_second
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    last_cid = start_cid
+    # Load all CIDs from file (one per line)
+    with open(cid_list_file, 'r') as f:
+        cid_list = [line.strip() for line in f if line.strip()]
+    
+    # State is index into cid_list
     state_file = os.path.join(output_dir, state_file)
+    start_idx = 0
     if os.path.exists(state_file):
         with open(state_file, 'r') as f:
-            last_cid = int(f.read().strip()) + 1
+            start_idx = int(f.read().strip()) + 1
 
     summaries = []
-    for cid in range(last_cid, end_cid + 1):
+    for idx in range(start_idx, len(cid_list)):
+        cid = cid_list[idx]
         try:
             start_time = time.time()
             response = requests.get(base_url.format(cid))
@@ -80,8 +86,7 @@ def save_summaries(summaries, output_dir, start_cid, end_cid):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download PubChem summaries.")
-    parser.add_argument("--start_cid", type=int, default=1, help="Starting CID")
-    parser.add_argument("--end_cid", type=int, default=1000000, help="Ending CID")
+    parser.add_argument("--cid_list_file", required=True, type=str, help="Path to text file with one CID per line")
     parser.add_argument("--output_dir", default='pubchem', type=str, help="Output directory")
     parser.add_argument("--state_file", type=str, default='pubchem_state', help="State file path")
     parser.add_argument("--cids_per_file", type=int, default=1000, help="Number of CIDs per file")
@@ -91,8 +96,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     download_pubchem_summaries(
-        args.start_cid,
-        args.end_cid,
+        args.cid_list_file,
         args.output_dir,
         args.state_file,
         args.cids_per_file,
