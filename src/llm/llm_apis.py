@@ -10,7 +10,7 @@ import pyarrow as pa
 import re
 import torch
 from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import rdMolDescriptors, GraphDescriptors, rdmolops
 
 
 # Processor to handle different question sets
@@ -172,58 +172,58 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
 # =================================================
 # Molecular Property Functions
 # =================================================
-def count_heavy_atoms(smiles: str) -> int:
+def count_heavy_atoms(mol: Any) -> int:
     """
     Count the number of heavy (non-hydrogen) atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
-    :type smiles: str
+    :param mol: RDKit molecule object.
+    :type mol: Any
     :return: Number of heavy atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return mol.GetNumHeavyAtoms()
 
-def count_non_hydrogen_bonds(smiles: str) -> int:
+def count_non_hydrogen_bonds(mol: Any) -> int:
     """
-    Count the number of bonds not to hydrogen in a molecule.
+    Count the number of bonds not involving hydrogen in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
-    :type smiles: str
-    :return: Number of bonds not to hydrogen in the molecule.
+    :param mol: RDKit molecule object.
+    :type mol: Any
+    :return: Number of non-hydrogen bonds in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
-    return sum(1 for bond in mol.GetBonds() if bond.GetBeginAtom().GetSymbol() != 'H' and bond.GetEndAtom().GetSymbol() != 'H')
+    return sum(
+        1
+        for bond in mol.GetBonds()
+        if bond.GetBeginAtom().GetSymbol() != "H" and bond.GetEndAtom().GetSymbol() != "H"
+    )
 
-def count_positive_formal_charge_atoms(smiles: str) -> int:
+def count_positive_formal_charge_atoms(mol: Any) -> int:
     """
     Count the number of atoms with positive formal charge in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of atoms with positive formal charge.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return sum(1 for atom in mol.GetAtoms() if atom.GetFormalCharge() > 0)
 
-def count_negative_formal_charge_atoms(smiles: str) -> int:
+def count_negative_formal_charge_atoms(mol: Any) -> int:
     """
     Count the number of atoms with negative formal charge in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of atoms with negative formal charge.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return sum(1 for atom in mol.GetAtoms() if atom.GetFormalCharge() < 0)
@@ -241,128 +241,119 @@ def count_element_atoms(mol: Any, element: str) -> int:
     """
     return sum(1 for atom in mol.GetAtoms() if atom.GetSymbol() == element)
 
-def count_carbon_atoms(smiles: str) -> int:
+def count_carbon_atoms(mol: Any) -> int:
     """
     Count carbon atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of carbon atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return count_element_atoms(mol, 'C')
 
-def count_nitrogen_atoms(smiles: str) -> int:
+def count_nitrogen_atoms(mol: Any) -> int:
     """
     Count nitrogen atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of nitrogen atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return count_element_atoms(mol, 'N')
 
-def count_oxygen_atoms(smiles: str) -> int:
+def count_oxygen_atoms(mol: Any) -> int:
     """
     Count oxygen atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of oxygen atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return count_element_atoms(mol, 'O')
 
-def count_sulfur_atoms(smiles: str) -> int:
+def count_sulfur_atoms(mol: Any) -> int:
     """
     Count sulfur atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of sulfur atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return count_element_atoms(mol, 'S')
 
-def count_phosphorus_atoms(smiles: str) -> int:
+def count_phosphorus_atoms(mol: Any) -> int:
     """
     Count phosphorus atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of phosphorus atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return count_element_atoms(mol, 'P')
 
-def count_chlorine_atoms(smiles: str) -> int:
+def count_chlorine_atoms(mol: Any) -> int:
     """
     Count chlorine atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of chlorine atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return count_element_atoms(mol, 'Cl')
 
-def count_fluorine_atoms(smiles: str) -> int:
+def count_fluorine_atoms(mol: Any) -> int:
     """
     Count fluorine atoms in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of fluorine atoms in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return count_element_atoms(mol, 'F')
 
-def count_rings(smiles: str) -> int:
+def count_rings(mol: Any) -> int:
     """
     Count the number of rings in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of rings in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return rdMolDescriptors.CalcNumRings(mol)
 
-def count_aromatic_rings(smiles: str) -> int:
+def count_aromatic_rings(mol: Any) -> int:
     """
     Count the number of aromatic rings in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of aromatic rings in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     count = 0
@@ -375,44 +366,41 @@ def count_aromatic_rings(smiles: str) -> int:
             count += 1
     return count
 
-def count_double_bonds(smiles: str) -> int:
+def count_double_bonds(mol: Any) -> int:
     """
     Count the number of double bonds in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of double bonds in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return sum(1 for bond in mol.GetBonds() if bond.GetBondType() == Chem.rdchem.BondType.DOUBLE)
 
-def count_triple_bonds(smiles: str) -> int:
+def count_triple_bonds(mol: Any) -> int:
     """
     Count the number of triple bonds in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of triple bonds in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return sum(1 for bond in mol.GetBonds() if bond.GetBondType() == Chem.rdchem.BondType.TRIPLE)
 
-def count_stereo_double_bonds(smiles: str) -> int:
+def count_stereo_double_bonds(mol: Any) -> int:
     """
     Count the number of stereo double bonds (E/Z) in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of stereo (E/Z) double bonds in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return sum(1 for bond in mol.GetBonds() 
@@ -420,50 +408,250 @@ def count_stereo_double_bonds(smiles: str) -> int:
                and (bond.GetStereo() == Chem.rdchem.BondStereo.STEREOE or 
                     bond.GetStereo() == Chem.rdchem.BondStereo.STEREOZ))
 
-def count_stereocenters(smiles: str) -> int:
+def count_stereocenters(mol: Any) -> int:
     """
     Count the number of stereocenters in a molecule.
 
-    :param smiles: SMILES string representation of the molecule.
+    :param mol: RDKit molecule object.
     :type smiles: str
     :return: Number of stereocenters in the molecule.
     :rtype: int
     """
-    mol = Chem.MolFromSmiles(smiles)
     if mol is None:
         return 0
     return rdMolDescriptors.CalcNumAtomStereoCenters(mol)
 
+
+# Additional molecular topology functions
+
+def count_five_membered_rings(mol: Any) -> int:
+    """Count 5-membered rings in a molecule."""
+    if mol is None:
+        return 0
+    return sum(1 for ring in Chem.GetSymmSSSR(mol) if len(ring) == 5)
+
+def count_aromatic_five_membered_rings(mol: Any) -> int:
+    """Count aromatic 5-membered rings in a molecule."""
+    if mol is None:
+        return 0
+    count = 0
+    for ring in Chem.GetSymmSSSR(mol):
+        atoms = list(ring)
+        if len(atoms) != 5:
+            continue
+        if all(
+            mol.GetBondBetweenAtoms(a1, a2).GetIsAromatic()
+            for a1, a2 in zip(atoms, atoms[1:] + [atoms[0]])
+        ):
+            count += 1
+    return count
+
+def count_six_membered_rings(mol: Any) -> int:
+    """Count 6-membered rings in a molecule."""
+    if mol is None:
+        return 0
+    return sum(1 for ring in Chem.GetSymmSSSR(mol) if len(ring) == 6)
+
+def count_aromatic_six_membered_rings(mol: Any) -> int:
+    """Count aromatic 6-membered rings in a molecule."""
+    if mol is None:
+        return 0
+    count = 0
+    for ring in Chem.GetSymmSSSR(mol):
+        atoms = list(ring)
+        if len(atoms) != 6:
+            continue
+        if all(
+            mol.GetBondBetweenAtoms(a1, a2).GetIsAromatic()
+            for a1, a2 in zip(atoms, atoms[1:] + [atoms[0]])
+        ):
+            count += 1
+    return count
+
+def longest_chain_length(mol: Any) -> int:
+    """Return the length of the longest acyclic (non-ring) chain in the molecule using DFS that avoids ring bonds and ignores hydrogens."""
+    if mol is None:
+        return 0
+    ri = mol.GetRingInfo()
+    ring_bonds = set()
+    for bond_idx in range(mol.GetNumBonds()):
+        if ri.NumBondRings(bond_idx) > 0:
+            ring_bonds.add(bond_idx)
+
+    def is_heavy(atom):
+        # Heavy atom: atomic number > 1
+        return atom.GetAtomicNum() > 1
+
+    def dfs(atom_idx, visited_atoms, visited_bonds):
+        max_len = 1
+        atom = mol.GetAtomWithIdx(atom_idx)
+        for bond in atom.GetBonds():
+            bidx = bond.GetIdx()
+            if bidx in ring_bonds or bidx in visited_bonds:
+                continue
+            nbr = bond.GetOtherAtomIdx(atom_idx)
+            nbr_atom = mol.GetAtomWithIdx(nbr)
+            if not is_heavy(nbr_atom):
+                continue
+            if nbr in visited_atoms:
+                continue
+            new_visited_atoms = visited_atoms | {nbr}
+            new_visited_bonds = visited_bonds | {bidx}
+            max_len = max(max_len, 1 + dfs(nbr, new_visited_atoms, new_visited_bonds))
+        return max_len
+
+    overall_max = 0
+    for atom in mol.GetAtoms():
+        if not is_heavy(atom):
+            continue
+        overall_max = max(overall_max, dfs(atom.GetIdx(), {atom.GetIdx()}, set()))
+    return overall_max
+
+
+def wiener_index(mol: Any) -> int:
+    """Return the Wiener index of the molecule."""
+    if mol is None:
+        return 0
+    try:
+        return int(GraphDescriptors.CalcWienerIndex(mol))
+    except Exception:
+        return 0
+
+def count_total_hydrogens(mol: Any) -> int:
+    """Count total (implicit + explicit) hydrogens in the molecule."""
+    if mol is None:
+        return 0
+    return sum(atom.GetTotalNumHs() for atom in mol.GetAtoms())
+
+def count_fused_rings(mol: Any) -> int:
+    """Return the number of rings in the SSSR that are fused to another ring (using RDKit's IsRingFused)."""
+    if mol is None:
+        return 0
+    ri = mol.GetRingInfo()
+    return sum(ri.IsRingFused(i) for i in range(len(ri.AtomRings())))
+
+
+def count_bridged_atoms(mol: Any) -> int:
+    """Count bridged atoms in the molecule (by bridgehead atoms)."""
+    if mol is None:
+        return 0
+    return rdMolDescriptors.CalcNumBridgeheadAtoms(mol)
+
+def count_aromatic_heterocycles(mol: Any) -> int:
+    """Count the number of aromatic heterocyclic rings in the molecule."""
+    if mol is None:
+        return 0
+    return rdMolDescriptors.CalcNumAromaticHeterocycles(mol)
+
+def count_aromatic_carbocycles(mol: Any) -> int:
+    """Count the number of aromatic carbocyclic rings in the molecule."""
+    if mol is None:
+        return 0
+    return rdMolDescriptors.CalcNumAromaticCarbocycles(mol)
+
+def count_saturated_heterocycles(mol: Any) -> int:
+    """Count the number of saturated heterocyclic rings in the molecule."""
+    if mol is None:
+        return 0
+    return rdMolDescriptors.CalcNumSaturatedHeterocycles(mol)
+
+def count_saturated_carbocycles(mol: Any) -> int:
+    """Count the number of saturated carbocyclic rings in the molecule."""
+    if mol is None:
+        return 0
+    return rdMolDescriptors.CalcNumSaturatedCarbocycles(mol)
+
+def count_aliphatic_heterocycles(mol: Any) -> int:
+    """Count the number of aliphatic heterocyclic rings in the molecule."""
+    if mol is None:
+        return 0
+    return rdMolDescriptors.CalcNumAliphaticHeterocycles(mol)
+
+def count_aliphatic_carbocycles(mol: Any) -> int:
+    """Count the number of aliphatic carbocyclic rings in the molecule."""
+    if mol is None:
+        return 0
+    return rdMolDescriptors.CalcNumAliphaticCarbocycles(mol)
 
 # Function to calculate all properties for a set of molecules
 def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequence[Any]]:
     """
     Calculate various molecular properties for a list of SMILES strings.
 
-    :param smiles_list: List of SMILES strings.
-    :type smiles_list: Sequence[str]
     :return: Dictionary mapping property names to lists of property values.
     :rtype: Dict[str, Sequence[Any]]
     """
-    return {
-        "carbon_count": [count_carbon_atoms(s) for s in smiles_list],
-        "nitrogen_count": [count_nitrogen_atoms(s) for s in smiles_list],
-        "oxygen_count": [count_oxygen_atoms(s) for s in smiles_list],
-        "sulfur_count": [count_sulfur_atoms(s) for s in smiles_list],
-        "phosphorus_count": [count_phosphorus_atoms(s) for s in smiles_list],
-        "chlorine_count": [count_chlorine_atoms(s) for s in smiles_list],
-        "fluorine_count": [count_fluorine_atoms(s) for s in smiles_list],
-        "ring_count": [count_rings(s) for s in smiles_list],
-        "aromatic_ring_count": [count_aromatic_rings(s) for s in smiles_list],
-        "double_bond_count": [count_double_bonds(s) for s in smiles_list],
-        "triple_bond_count": [count_triple_bonds(s) for s in smiles_list],
-        "stereo_double_bond_count": [count_stereo_double_bonds(s) for s in smiles_list],
-        "stereocenter_count": [count_stereocenters(s) for s in smiles_list],
-        "heavy_atom_count": [count_heavy_atoms(s) for s in smiles_list],
-        "non_hydrogen_bond_count": [count_non_hydrogen_bonds(s) for s in smiles_list],
-        "positive_formal_charge_count": [count_positive_formal_charge_atoms(s) for s in smiles_list],
-        "negative_formal_charge_count": [count_negative_formal_charge_atoms(s) for s in smiles_list],
+    properties = {
+        "carbon_count": [],
+        "nitrogen_count": [],
+        "oxygen_count": [],
+        "sulfur_count": [],
+        "phosphorus_count": [],
+        "chlorine_count": [],
+        "fluorine_count": [],
+        "ring_count": [],
+        "aromatic_ring_count": [],
+        "five_membered_ring_count": [],
+        "aromatic_five_membered_ring_count": [],
+        "six_membered_ring_count": [],
+        "aromatic_six_membered_ring_count": [],
+        "aromatic_heterocycle_count": [],
+        "aromatic_carbocycle_count": [],
+        "aliphatic_heterocycle_count": [],
+        "aliphatic_carbocycle_count": [],
+        "saturated_heterocycle_count": [],
+        "saturated_carbocycle_count": [],
+        "longest_chain_length": [],
+        "wiener_index": [],
+        "hydrogen_count": [],
+        "fused_ring_count": [],
+        "bridged_atom_count": [],
+        "double_bond_count": [],
+        "triple_bond_count": [],
+        "stereo_double_bond_count": [],
+        "stereocenter_count": [],
+        "heavy_atom_count": [],
+        "non_hydrogen_bond_count": [],
+        "positive_formal_charge_count": [],
+        "negative_formal_charge_count": [],
     }
+
+    for s in smiles_list:
+        mol = Chem.MolFromSmiles(s)
+        properties["carbon_count"].append(count_carbon_atoms(mol))
+        properties["nitrogen_count"].append(count_nitrogen_atoms(mol))
+        properties["oxygen_count"].append(count_oxygen_atoms(mol))
+        properties["sulfur_count"].append(count_sulfur_atoms(mol))
+        properties["phosphorus_count"].append(count_phosphorus_atoms(mol))
+        properties["chlorine_count"].append(count_chlorine_atoms(mol))
+        properties["fluorine_count"].append(count_fluorine_atoms(mol))
+        properties["ring_count"].append(count_rings(mol))
+        properties["aromatic_ring_count"].append(count_aromatic_rings(mol))
+        properties["five_membered_ring_count"].append(count_five_membered_rings(mol))
+        properties["aromatic_five_membered_ring_count"].append(count_aromatic_five_membered_rings(mol))
+        properties["six_membered_ring_count"].append(count_six_membered_rings(mol))
+        properties["aromatic_six_membered_ring_count"].append(count_aromatic_six_membered_rings(mol))
+        properties["longest_chain_length"].append(longest_chain_length(mol))
+        properties["wiener_index"].append(wiener_index(mol))
+        properties["hydrogen_count"].append(count_total_hydrogens(mol))
+        properties["fused_ring_count"].append(count_fused_rings(mol))
+        properties["bridged_atom_count"].append(count_bridged_atoms(mol))
+        properties["aromatic_heterocycle_count"].append(count_aromatic_heterocycles(mol))
+        properties["aromatic_carbocycle_count"].append(count_aromatic_carbocycles(mol))
+        properties["aliphatic_heterocycle_count"].append(count_aliphatic_heterocycles(mol))
+        properties["aliphatic_carbocycle_count"].append(count_aliphatic_carbocycles(mol))
+        properties["saturated_heterocycle_count"].append(count_saturated_heterocycles(mol))
+        properties["saturated_carbocycle_count"].append(count_saturated_carbocycles(mol))
+        properties["double_bond_count"].append(count_double_bonds(mol))
+        properties["triple_bond_count"].append(count_triple_bonds(mol))
+        properties["stereo_double_bond_count"].append(count_stereo_double_bonds(mol))
+        properties["stereocenter_count"].append(count_stereocenters(mol))
+        properties["heavy_atom_count"].append(count_heavy_atoms(mol))
+        properties["non_hydrogen_bond_count"].append(count_non_hydrogen_bonds(mol))
+        properties["positive_formal_charge_count"].append(count_positive_formal_charge_atoms(mol))
+        properties["negative_formal_charge_count"].append(count_negative_formal_charge_atoms(mol))
+
+    return properties
 
 def process_single_qa(
     tok: Any,
