@@ -1,57 +1,102 @@
 # Configuration for molecular property counting questions
-system_prompt: "Do not think. Place the answer between <|extra_100|> and <|extra_101|>. The answer should be a number."
+system_prompt: ""
 
 question_set: molecular_properties
 
 questions:
   - id: carbon_count
     user_template: "How many carbon atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{carbon_count}<|extra_101|>"
+    assistant_template: "The number of carbon atoms is: {carbon_count}"
   - id: heavy_atom_count
     user_template: "How many heavy (non-hydrogen) atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{heavy_atom_count}<|extra_101|>"
+    assistant_template: "The number of heavy (non-hydrogen) atoms is: {heavy_atom_count}"
   - id: non_hydrogen_bond_count
     user_template: "How many bonds not to hydrogen are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{non_hydrogen_bond_count}<|extra_101|>"
+    assistant_template: "The number of bonds not to hydrogen is: {non_hydrogen_bond_count}"
   - id: positive_formal_charge_count
     user_template: "How many atoms with positive formal charge are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{positive_formal_charge_count}<|extra_101|>"
+    assistant_template: "The number of atoms with positive formal charge is: {positive_formal_charge_count}"
   - id: negative_formal_charge_count
     user_template: "How many atoms with negative formal charge are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{negative_formal_charge_count}<|extra_101|>"
+    assistant_template: "The number of atoms with negative formal charge is: {negative_formal_charge_count}"
   - id: nitrogen_count
     user_template: "How many nitrogen atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{nitrogen_count}<|extra_101|>"
+    assistant_template: "The number of nitrogen atoms is: {nitrogen_count}"
   - id: oxygen_count
     user_template: "How many oxygen atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{oxygen_count}<|extra_101|>"
+    assistant_template: "The number of oxygen atoms is: {oxygen_count}"
   - id: sulfur_count
     user_template: "How many sulfur atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{sulfur_count}<|extra_101|>"
+    assistant_template: "The number of sulfur atoms is: {sulfur_count}"
   - id: phosphorus_count
     user_template: "How many phosphorus atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{phosphorus_count}<|extra_101|>"
+    assistant_template: "The number of phosphorus atoms is: {phosphorus_count}"
   - id: chlorine_count
     user_template: "How many chlorine atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{chlorine_count}<|extra_101|>"
+    assistant_template: "The number of chlorine atoms is: {chlorine_count}"
   - id: fluorine_count
     user_template: "How many fluorine atoms are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{fluorine_count}<|extra_101|>"
+    assistant_template: "The number of fluorine atoms is: {fluorine_count}"
   - id: ring_count
-    user_template: "How many rings are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{ring_count}<|extra_101|>"
+    user_template: "How many rings are in the molecule {smiles} SSSR?"
+    assistant_template: "The number of rings is: {ring_count}"
   - id: aromatic_ring_count
-    user_template: "How many aromatic rings are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{aromatic_ring_count}<|extra_101|>"
+    user_template: "How many aromatic rings are in the molecule {smiles} SSSR?"
+    assistant_template: "The number of aromatic rings is: {aromatic_ring_count}"
   - id: double_bond_count
-    user_template: "How many double bonds are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{double_bond_count}<|extra_101|>"
+    user_template: "How many double bonds are in the molecule {smiles}"
+    assistant_template: "The number of double bonds is: {double_bond_count}"
   - id: triple_bond_count
     user_template: "How many triple bonds are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{triple_bond_count}<|extra_101|>"
+    assistant_template: "The number of triple bonds is: {triple_bond_count}"
   - id: stereo_double_bond_count
     user_template: "How many stereo double bonds are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{stereo_double_bond_count}<|extra_101|>"
+    assistant_template: "The number of stereo double bonds is: {stereo_double_bond_count}"
   - id: stereocenter_count
     user_template: "How many stereocenters are in the molecule {smiles}?"
-    assistant_template: "<|extra_100|>{stereocenter_count}<|extra_101|>"
+    assistant_template: "The number of stereocenters is: {stereocenter_count}"
+  - id: five_membered_ring_count
+    user_template: "How many 5-membered rings are in the molecule {smiles}?"
+    assistant_template: "The number of 5-membered rings is: {five_membered_ring_count}"
+  - id: aromatic_five_membered_ring_count
+    user_template: "How many aromatic 5-membered rings are in the molecule {smiles}?"
+    assistant_template: "The number of aromatic 5-membered rings is: {aromatic_five_membered_ring_count}"
+  - id: six_membered_ring_count
+    user_template: "How many 6-membered rings are in the molecule {smiles}?"
+    assistant_template: "The number of 6-membered rings is: {six_membered_ring_count}"
+  - id: aromatic_six_membered_ring_count
+    user_template: "How many aromatic 6-membered rings are in the molecule {smiles}?"
+    assistant_template: "The number of aromatic 6-membered rings is: {aromatic_six_membered_ring_count}"
+  - id: fused_ring_count
+    user_template: "How many rings in the molecule {smiles} SSSR are fused to at least one other ring?"
+    assistant_template: "The number of fused rings is: {fused_ring_count}"
+  - id: bridged_atom_count
+    user_template: "How many bridged atoms are in the molecule {smiles}?"
+    assistant_template: "The number of bridged atoms is: {bridged_atom_count}"
+  - id: aromatic_heterocycle_count
+    user_template: "How many aromatic heterocycles are in the molecule {smiles}?"
+    assistant_template: "The number of aromatic heterocycles is: {aromatic_heterocycle_count}"
+  - id: aromatic_carbocycle_count
+    user_template: "How many aromatic carbocycles are in the molecule {smiles}?"
+    assistant_template: "The number of aromatic carbocycles is: {aromatic_carbocycle_count}"
+  - id: aliphatic_heterocycle_count
+    user_template: "How many aliphatic heterocycles are in the molecule {smiles}?"
+    assistant_template: "The number of aliphatic heterocycles is: {aliphatic_heterocycle_count}"
+  - id: aliphatic_carbocycle_count
+    user_template: "How many aliphatic carbocycles are in the molecule {smiles}?"
+    assistant_template: "The number of aliphatic carbocycles is: {aliphatic_carbocycle_count}"
+  - id: saturated_heterocycle_count
+    user_template: "How many saturated heterocycles are in the molecule {smiles}?"
+    assistant_template: "The number of saturated heterocycles is: {saturated_heterocycle_count}"
+  - id: saturated_carbocycle_count
+    user_template: "How many saturated carbocycles are in the molecule {smiles}?"
+    assistant_template: "The number of saturated carbocycles is: {saturated_carbocycle_count}"
+  - id: hydrogen_count
+    user_template: "How many hydrogens (implicit + explicit) are in the molecule {smiles}?"
+    assistant_template: "The number of hydrogens is: {hydrogen_count}"
+  - id: longest_chain_length
+    user_template: "What is the length of the longest acyclic chain (heavy atoms only, excluding ring bonds) in the molecule {smiles}?"
+    assistant_template: "The length of the longest acyclic chain is: {longest_chain_length}"
+  - id: wiener_index
+    user_template: "What is the Wiener index of the molecule {smiles}?"
+    assistant_template: "The Wiener index is: {wiener_index}"

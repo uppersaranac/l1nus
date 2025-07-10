@@ -1,5 +1,5 @@
 # Configuration for the comprehensive all-properties question
-system_prompt: "Do not think. Put the answers in <|extra_100|> and <|extra_101|>."
+system_prompt: ""
 
 question_set: all_properties
 
@@ -9,20 +9,35 @@ questions:
     assistant_template: |
       Molecular Analysis of {smiles}:
       
-      Carbon atoms: <|extra_100|>{carbon_count}<|extra_101|>
-      Nitrogen atoms: <|extra_100|>{nitrogen_count}<|extra_101|>
-      Oxygen atoms: <|extra_100|>{oxygen_count}<|extra_101|>
-      Sulfur atoms: <|extra_100|>{sulfur_count}<|extra_101|>
-      Phosphorus atoms: <|extra_100|>{phosphorus_count}<|extra_101|>
-      Chlorine atoms: <|extra_100|>{chlorine_count}<|extra_101|>
-      Fluorine atoms: <|extra_100|>{fluorine_count}<|extra_101|>
-      Rings: <|extra_100|>{ring_count}<|extra_101|>
-      Aromatic rings: <|extra_100|>{aromatic_ring_count}<|extra_101|>
-      Double bonds: <|extra_100|>{double_bond_count}<|extra_101|>
-      Triple bonds: <|extra_100|>{triple_bond_count}<|extra_101|>
-      Stereo double bonds: <|extra_100|>{stereo_double_bond_count}<|extra_101|>
-      Stereocenters: <|extra_100|>{stereocenter_count}<|extra_101|>
-      Heavy atoms: <|extra_100|>{heavy_atom_count}<|extra_101|>
-      Bonds not to hydrogen: <|extra_100|>{non_hydrogen_bond_count}<|extra_101|>
-      Atoms with positive formal charge: <|extra_100|>{positive_formal_charge_count}<|extra_101|>
-      Atoms with negative formal charge: <|extra_100|>{negative_formal_charge_count}<|extra_101|>
+      Carbon atoms: {carbon_count}
+      Nitrogen atoms: {nitrogen_count}
+      Oxygen atoms: {oxygen_count}
+      Sulfur atoms: {sulfur_count}
+      Phosphorus atoms: {phosphorus_count}
+      Chlorine atoms: {chlorine_count}
+      Fluorine atoms: {fluorine_count}
+      Rings: {ring_count}
+      Aromatic rings: {aromatic_ring_count}
+      Double bonds: {double_bond_count}
+      Triple bonds: {triple_bond_count}
+      Stereo double bonds: {stereo_double_bond_count}
+      Stereocenters: {stereocenter_count}
+      Heavy atoms: {heavy_atom_count}
+      Bonds not to hydrogen: {non_hydrogen_bond_count}
+      Atoms with positive formal charge: {positive_formal_charge_count}
+      Atoms with negative formal charge: {negative_formal_charge_count}
+      5-membered rings: {five_membered_ring_count}
+      Aromatic 5-membered rings: {aromatic_five_membered_ring_count}
+      6-membered rings: {six_membered_ring_count}
+      Aromatic 6-membered rings: {aromatic_six_membered_ring_count}
+      Fused rings: {fused_ring_count}
+      Bridged atoms: {bridged_atom_count}
+      Aromatic heterocycles: {aromatic_heterocycle_count}
+      Aromatic carbocycles: {aromatic_carbocycle_count}
+      Aliphatic heterocycles: {aliphatic_heterocycle_count}
+      Aliphatic carbocycles: {aliphatic_carbocycle_count}
+      Saturated heterocycles: {saturated_heterocycle_count}
+      Saturated carbocycles: {saturated_carbocycle_count}
+      Hydrogens (implicit + explicit): {hydrogen_count}
+      Longest acyclic chain (heavy atoms only, excluding ring bonds): {longest_chain_length}
+      Wiener index: {wiener_index}

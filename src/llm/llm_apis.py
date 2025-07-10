@@ -829,16 +829,21 @@ exact_match = evaluate.load("exact_match")
 def _norm(s: str) -> str:
     """
     Normalize prediction/label strings for exact-match comparison.
-    For multi-answer questions (e.g., all_properties), extracts all answers and joins them with '|'.
+    For multi-answer questions (e.g., all_properties), extracts the answer after the last colon and space, up to the next whitespace or '<'.
 
     :param s: Input string.
     :return: Normalized string.
     """
-    # Extract all answers
-    results = re.findall(r"<\|extra_100\|>(.*?)<\|extra_101\|>", s)
-    if results:
-        # Join all extracted values with '|', strip whitespace and trailing periods
-        return results[-1].strip().rstrip('.')
+    # Find the last colon followed by a space
+    idx = s.rfind(': ')
+    if idx != -1:
+        substr = s[idx + 2:]
+        # Extract up to the next whitespace or '<'
+        import re
+        match = re.match(r"([^\s<]+)", substr)
+        if match:
+            return match.group(1).strip().rstrip('.')
+        return substr.strip().split()[0] if substr.strip() else ''
     return s.strip().rstrip('.')
 
 
