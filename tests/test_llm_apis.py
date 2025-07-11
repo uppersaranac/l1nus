@@ -151,9 +151,12 @@ def tokenizer():
     return tok
 
 def test_norm():
-    """Verify that _norm extracts the value between the special markers."""
-    assert _norm("It is <|extra_100|>ethanol<|extra_101|>") == "ethanol"
-    assert _norm(" <|extra_100|>ethanol<|extra_101|> ") == "ethanol"
+    """Verify that _norm extracts the value after the last colon and space."""
+    assert _norm("IUPAC name: ethanol\n") == "ethanol"
+    assert _norm("The molecule's name: methane ") == "methane"
+    assert _norm("Carbon count: 5") == "5"
+    assert _norm("Answer: benzene.") == "benzene"
+    assert _norm("ethanol") == "ethanol"  # No colon, returns original stripped
 
 def test_count_heavy_atoms():
     assert count_heavy_atoms(Chem.MolFromSmiles("CCO")) == 3  # ethanol: 2C, 1O
