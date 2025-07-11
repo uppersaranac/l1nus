@@ -507,16 +507,6 @@ def longest_chain_length(mol: Any) -> int:
         overall_max = max(overall_max, dfs(atom.GetIdx(), {atom.GetIdx()}, set()))
     return overall_max
 
-
-def wiener_index(mol: Any) -> int:
-    """Return the Wiener index of the molecule."""
-    if mol is None:
-        return 0
-    try:
-        return int(GraphDescriptors.CalcWienerIndex(mol))
-    except Exception:
-        return 0
-
 def count_total_hydrogens(mol: Any) -> int:
     """Count total (implicit + explicit) hydrogens in the molecule."""
     if mol is None:
@@ -529,13 +519,6 @@ def count_fused_rings(mol: Any) -> int:
         return 0
     ri = mol.GetRingInfo()
     return sum(ri.IsRingFused(i) for i in range(len(ri.AtomRings())))
-
-
-def count_bridged_atoms(mol: Any) -> int:
-    """Count bridged atoms in the molecule (by bridgehead atoms)."""
-    if mol is None:
-        return 0
-    return rdMolDescriptors.CalcNumBridgeheadAtoms(mol)
 
 def count_aromatic_heterocycles(mol: Any) -> int:
     """Count the number of aromatic heterocyclic rings in the molecule."""
@@ -602,10 +585,8 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequ
         "saturated_heterocycle_count": [],
         "saturated_carbocycle_count": [],
         "longest_chain_length": [],
-        "wiener_index": [],
         "hydrogen_count": [],
         "fused_ring_count": [],
-        "bridged_atom_count": [],
         "double_bond_count": [],
         "triple_bond_count": [],
         "stereo_double_bond_count": [],
@@ -632,10 +613,8 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequ
         properties["six_membered_ring_count"].append(count_six_membered_rings(mol))
         properties["aromatic_six_membered_ring_count"].append(count_aromatic_six_membered_rings(mol))
         properties["longest_chain_length"].append(longest_chain_length(mol))
-        properties["wiener_index"].append(wiener_index(mol))
         properties["hydrogen_count"].append(count_total_hydrogens(mol))
         properties["fused_ring_count"].append(count_fused_rings(mol))
-        properties["bridged_atom_count"].append(count_bridged_atoms(mol))
         properties["aromatic_heterocycle_count"].append(count_aromatic_heterocycles(mol))
         properties["aromatic_carbocycle_count"].append(count_aromatic_carbocycles(mol))
         properties["aliphatic_heterocycle_count"].append(count_aliphatic_heterocycles(mol))

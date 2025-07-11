@@ -31,7 +31,6 @@ questions:
       6-membered rings: {six_membered_ring_count}
       Aromatic 6-membered rings: {aromatic_six_membered_ring_count}
       Fused rings: {fused_ring_count}
-      Bridged atoms: {bridged_atom_count}
       Aromatic heterocycles: {aromatic_heterocycle_count}
       Aromatic carbocycles: {aromatic_carbocycle_count}
       Aliphatic heterocycles: {aliphatic_heterocycle_count}
@@ -40,4 +39,3 @@ questions:
       Saturated carbocycles: {saturated_carbocycle_count}
       Hydrogens (implicit + explicit): {hydrogen_count}
       Longest acyclic chain (heavy atoms only, excluding ring bonds): {longest_chain_length}
-      Wiener index: {wiener_index}

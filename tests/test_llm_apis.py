@@ -12,8 +12,8 @@ from llm.llm_apis import (
     count_element_atoms, count_carbon_atoms, count_nitrogen_atoms, count_oxygen_atoms, count_sulfur_atoms, count_phosphorus_atoms,
     count_chlorine_atoms, count_fluorine_atoms, count_rings, count_aromatic_rings, count_double_bonds, count_triple_bonds,
     count_stereo_double_bonds, count_stereocenters, count_five_membered_rings, count_aromatic_five_membered_rings,
-    count_six_membered_rings, count_aromatic_six_membered_rings, longest_chain_length, wiener_index, count_total_hydrogens,
-    count_fused_rings, count_bridged_atoms, count_aromatic_heterocycles, count_aromatic_carbocycles,
+    count_six_membered_rings, count_aromatic_six_membered_rings, longest_chain_length, count_total_hydrogens,
+    count_fused_rings, count_aromatic_heterocycles, count_aromatic_carbocycles,
     count_saturated_heterocycles, count_saturated_carbocycles, count_aliphatic_heterocycles, count_aliphatic_carbocycles,
     calculate_molecular_properties,
     QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor,
@@ -100,10 +100,6 @@ def test_longest_chain_length():
     mol2 = Chem.MolFromSmiles("C1CCCCC1") # cyclohexane (no acyclic chain)
     assert longest_chain_length(mol2) == 1
 
-def test_wiener_index():
-    mol = Chem.MolFromSmiles("CCO")
-    assert isinstance(wiener_index(mol), int)
-
 def test_count_total_hydrogens():
     mol = Chem.MolFromSmiles("CCO")
     assert count_total_hydrogens(mol) == 6
@@ -113,10 +109,6 @@ def test_count_fused_rings():
     assert count_fused_rings(mol_naphthalene) == 2
     mol_cyclohexane = Chem.MolFromSmiles('C1CCCCC1')
     assert count_fused_rings(mol_cyclohexane) == 0
-
-def test_count_bridged_atoms():
-    mol = Chem.MolFromSmiles('C1C2CC1CC2') # bicyclo[2.2.0]hexane
-    assert isinstance(count_bridged_atoms(mol), int)
 
 def test_count_aromatic_heterocycles():
     mol = Chem.MolFromSmiles('c1ccncc1') # pyridine

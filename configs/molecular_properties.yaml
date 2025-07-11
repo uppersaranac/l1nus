@@ -70,9 +70,6 @@ questions:
   - id: fused_ring_count
     user_template: "How many rings in the molecule {smiles} SSSR are fused to at least one other ring?"
     assistant_template: "The number of fused rings is: {fused_ring_count}"
-  - id: bridged_atom_count
-    user_template: "How many bridged atoms are in the molecule {smiles}?"
-    assistant_template: "The number of bridged atoms is: {bridged_atom_count}"
   - id: aromatic_heterocycle_count
     user_template: "How many aromatic heterocycles are in the molecule {smiles}?"
     assistant_template: "The number of aromatic heterocycles is: {aromatic_heterocycle_count}"
@@ -97,6 +94,4 @@ questions:
   - id: longest_chain_length
     user_template: "What is the length of the longest acyclic chain (heavy atoms only, excluding ring bonds) in the molecule {smiles}?"
     assistant_template: "The length of the longest acyclic chain is: {longest_chain_length}"
-  - id: wiener_index
-    user_template: "What is the Wiener index of the molecule {smiles}?"
-    assistant_template: "The Wiener index is: {wiener_index}"
+
