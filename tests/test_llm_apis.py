@@ -96,9 +96,9 @@ def test_count_aromatic_six_membered_rings():
 
 def test_longest_chain_length():
     mol = Chem.MolFromSmiles("CCO")
-    assert longest_chain_length(mol) == 3
+    assert longest_chain_length(mol) == 2
     mol2 = Chem.MolFromSmiles("C1CCCCC1") # cyclohexane (no acyclic chain)
-    assert longest_chain_length(mol2) == 1
+    assert longest_chain_length(mol2) == 0
 
 def test_count_total_hydrogens():
     mol = Chem.MolFromSmiles("CCO")

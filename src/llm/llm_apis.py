@@ -469,29 +469,28 @@ def count_aromatic_six_membered_rings(mol: Any) -> int:
     return count
 
 def longest_chain_length(mol: Any) -> int:
-    """Return the length of the longest acyclic (non-ring) chain in the molecule using DFS that avoids ring bonds and ignores hydrogens."""
+    """Return the length of the longest carbon chain in the molecule where none of the carbons are in a ring."""
     if mol is None:
         return 0
     ri = mol.GetRingInfo()
-    ring_bonds = set()
-    for bond_idx in range(mol.GetNumBonds()):
-        if ri.NumBondRings(bond_idx) > 0:
-            ring_bonds.add(bond_idx)
+    ring_atoms = set()
+    for ring in ri.AtomRings():
+        ring_atoms.update(ring)
 
-    def is_heavy(atom):
-        # Heavy atom: atomic number > 1
-        return atom.GetAtomicNum() > 1
+    def is_carbon(atom):
+        return atom.GetSymbol() == 'C'
 
     def dfs(atom_idx, visited_atoms, visited_bonds):
         max_len = 1
         atom = mol.GetAtomWithIdx(atom_idx)
         for bond in atom.GetBonds():
             bidx = bond.GetIdx()
-            if bidx in ring_bonds or bidx in visited_bonds:
+            if bidx in visited_bonds:
                 continue
             nbr = bond.GetOtherAtomIdx(atom_idx)
             nbr_atom = mol.GetAtomWithIdx(nbr)
-            if not is_heavy(nbr_atom):
+            # Only consider carbon atoms that are not in rings
+            if not is_carbon(nbr_atom) or nbr in ring_atoms:
                 continue
             if nbr in visited_atoms:
                 continue
@@ -502,7 +501,8 @@ def longest_chain_length(mol: Any) -> int:
 
     overall_max = 0
     for atom in mol.GetAtoms():
-        if not is_heavy(atom):
+        # Only start from carbon atoms that are not in rings
+        if not is_carbon(atom) or atom.GetIdx() in ring_atoms:
             continue
         overall_max = max(overall_max, dfs(atom.GetIdx(), {atom.GetIdx()}, set()))
     return overall_max
