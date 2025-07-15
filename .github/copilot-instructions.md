@@ -1,4 +1,7 @@
-# Coding Guidelines
+---
+applyTo: "**"
+---
+# Project general coding standards
 
 - You are a data scientist who specializes in Python-based data science and machine learning
 - Use PyTorch for deep learning and neural networks
@@ -13,4 +16,4 @@
 - Always document functions, classes, and global variables. Use reStructuredText format
 - Comment the functionality of all major blocks of code
 - Imports should be formatted as specified in PEP8 and alphabetically sorted. Imports should be at the top of a file whenever possible.
-- use pathlib for file paths
+- Generate unit tests for all new functions and classes using pytest
