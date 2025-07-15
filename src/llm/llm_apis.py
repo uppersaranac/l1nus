@@ -10,7 +10,7 @@ import pyarrow as pa
 import re
 import torch
 from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors, GraphDescriptors, rdmolops
+from rdkit.Chem import rdMolDescriptors
 
 
 # Processor to handle different question sets
@@ -21,10 +21,10 @@ class QuestionSetProcessor:
     :param name: Name of the question set.
     :type name: str
     """
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str="") -> None:
         self.name = name
 
-    def prepare_answers(self, table: pa.Table) -> Dict[str, Sequence[Any]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[dict[str, list[Any]], list[bool]]:
         """
         Prepare answers for the question set from a dataset.
 
@@ -39,10 +39,10 @@ class IUPACNamingProcessor(QuestionSetProcessor):
     """
     Processor for the IUPAC naming question set.
     """
-    def __init__(self) -> None:
-        super().__init__("iupac_naming")
+    def __init__(self, name: str="iupac_naming") -> None:
+        super().__init__(name)
 
-    def prepare_answers(self, table: pa.Table) -> tuple[Dict[str, Sequence[Any]], list[bool]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[dict[str, list[Any]], list[bool]]:
         """
         Prepare answers for IUPAC naming (just returns the IUPAC names) and a validity mask.
 
@@ -60,10 +60,10 @@ class MolecularPropertiesProcessor(QuestionSetProcessor):
     """
     Processor for the molecular properties question set.
     """
-    def __init__(self) -> None:
-        super().__init__("molecular_properties")
+    def __init__(self, name: str="molecular_properties") -> None:
+        super().__init__(name)
 
-    def prepare_answers(self, table: pa.Table) -> tuple[Dict[str, Sequence[Any]], list[bool]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[dict[str, list[Any]], list[bool]]:
         """
         Prepare answers for molecular properties.
         Returns a mask indicating which rows are valid (all properties present and not None/empty).
@@ -83,10 +83,10 @@ class AllPropertiesProcessor(QuestionSetProcessor):
     """
     Processor for the comprehensive 'all_properties' question set.
     """
-    def __init__(self) -> None:
-        super().__init__("all_properties")
+    def __init__(self, name: str="all_properties") -> None:
+        super().__init__(name)
 
-    def prepare_answers(self, table: pa.Table) -> tuple[Dict[str, Sequence[Any]], list[bool]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[dict[str, list[Any]], list[bool]]:
         """
         Prepare answers for the comprehensive 'all_properties' question set.
         Returns a mask indicating which rows are valid (all properties present and not None/empty).
@@ -557,12 +557,13 @@ def count_aliphatic_carbocycles(mol: Any) -> int:
     return rdMolDescriptors.CalcNumAliphaticCarbocycles(mol)
 
 # Function to calculate all properties for a set of molecules
-def calculate_molecular_properties(smiles_list: Sequence[str]) -> Dict[str, Sequence[Any]]:
+
+def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list[Any]]:
     """
     Calculate various molecular properties for a list of SMILES strings.
 
     :return: Dictionary mapping property names to lists of property values.
-    :rtype: Dict[str, Sequence[Any]]
+    :rtype: MutableMapping[str, Sequence[Any]]
     """
     properties = {
         "carbon_count": [],
@@ -833,6 +834,8 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
     :param tokenizer: Tokenizer instance.
     :return: Metrics computation function.
     """
+    all_preds = []
+    all_labels = []
     def compute_metrics(eval_preds, compute_result: bool = True) -> dict:
         """
         Compute metrics. With batch_eval_metrics=True, this function is called per batch and at the end with compute_result=True.
@@ -842,10 +845,7 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
         :param compute_result: Whether to return summary statistics (True at end of eval loop).
         :return: Computed metrics (only when compute_result=True).
         """
-        # Use closure variables to accumulate results
-        if not hasattr(compute_metrics, "all_preds"):
-            compute_metrics.all_preds = []
-            compute_metrics.all_labels = []
+        nonlocal all_preds, all_labels
         preds, labels = eval_preds
         # Move to cpu and convert to numpy if needed
         if isinstance(preds, torch.Tensor):
@@ -867,20 +867,20 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             decoded_labels = tokenizer.batch_decode(filtered_labels, skip_special_tokens=True)
             decoded_preds = [_norm(p) for p in decoded_preds]
             decoded_labels = [_norm(label) for label in decoded_labels]
-            compute_metrics.all_preds.extend(decoded_preds)
-            compute_metrics.all_labels.extend(decoded_labels)
+            all_preds.extend(decoded_preds)
+            all_labels.extend(decoded_labels)
         except OverflowError:
             print(f"OverflowError: {preds}")
         
         if compute_result:
             # Compute metrics only on the final call
             exact_m = exact_match.compute(
-                predictions=compute_metrics.all_preds, references=compute_metrics.all_labels
+                predictions=all_preds, references=all_labels
             )
             # Reset for next eval
-            compute_metrics.all_preds = []
-            compute_metrics.all_labels = []
-            return exact_m
+            all_preds = []
+            all_labels = []
+            return exact_m if exact_m is not None else {}
         else:
             # Return empty dict on intermediate calls
             return {}

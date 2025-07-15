@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.csv as pacsv
+import pyarrow.compute as pc
 import pyarrow.json as pajson
 import pyarrow.parquet as pq
 
@@ -91,6 +92,24 @@ def _parse_args() -> argparse.Namespace:
         help="Keep columns containing null values (by default, columns with any nulls are dropped)",
     )
 
+    p.add_argument(
+        "--filter-column",
+        type=str,
+        default="num_atoms",
+        help="Column name to filter by numeric range (default: num_atoms)",
+    )
+    p.add_argument(
+        "--filter-min",
+        type=float,
+        default=None,
+        help="Minimum value (inclusive) for numeric filtering (default: no lower bound)",
+    )
+    p.add_argument(
+        "--filter-max",
+        type=float,
+        default=None,
+        help="Maximum value (inclusive) for numeric filtering (default: no upper bound)",
+    )
     return p.parse_args()
 
 
@@ -119,6 +138,28 @@ def main() -> None:
             for col in null_cols:
                 table = table.remove_column(table.column_names.index(col))
             logger.info(f"Dropped {len(null_cols)} columns with nulls (from {before_cols} to {len(table.column_names)})")
+
+    # Numeric range filtering using pyarrow.compute
+    filter_col = args.filter_column
+    filter_min = args.filter_min
+    filter_max = args.filter_max
+    if filter_min is not None or filter_max is not None:
+        if filter_col not in table.column_names:
+            logger.error(f"Column '{filter_col}' not found in table for filtering.")
+            sys.exit(1)
+        col = table[filter_col]
+        mask = None
+        if filter_min is not None and filter_max is not None:
+            mask = pc.and_kleene( # type: ignore
+                pc.greater_equal(col, pa.scalar(filter_min)), # type: ignore
+                pc.less_equal(col, pa.scalar(filter_max)) # type: ignore
+            )
+        elif filter_min is not None:
+            mask = pc.greater_equal(col, pa.scalar(filter_min)) # type: ignore
+        elif filter_max is not None:
+            mask = pc.less_equal(col, pa.scalar(filter_max)) # type: ignore
+        table = table.filter(mask)
+        logger.info(f"Filtered table on column '{filter_col}' with min={filter_min}, max={filter_max}. Remaining rows: {table.num_rows}")
     logger.info("Loaded %d records", table.num_rows)
 
     logger.info("Parsing YAML config %s", args.config)
