@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J train_llm_mpi           # Job name
 #SBATCH -t 36:00:00              # Wall time (1 hour)
-#SBATCH -N 2                    # Number of nodes
+#SBATCH -N 8                    # Number of nodes
 #SBATCH -p gh                    # GPU partition (modify as needed)
 #SBATCH --mail-user=lewis.geer@gmail.com
 #SBATCH --mail-type=all
@@ -24,16 +24,17 @@ export LAUNCHER="accelerate launch \
 --main_process_port $MASTER_PORT \
 "
 
-export SCRIPT="../src/llm/train_llm.py"
+export SCRIPT="../src/llm/training/cli_train.py"
 
-export ARGS="--max_records 100 \
+export ARGS="--limit 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
---num_train_epochs 1 \
---eval_steps 10 \
---eval_limit 4 \
---train_file ~/data/pubchem/arrow/cluster_100k_train.arrow \
---eval_file ~/data/pubchem/arrow/cluster_100k_eval.arrow \
---question_set molecular_properties \
+--per_device_train_batch_size 2 \
+--per_device_eval_batch_size 2 \
+--num_train_epochs 8 \
+--eval_steps 10000 \
+--eval_num_examples 64 \
+--dataset_dir ~/data/pubchem/arrow/pubchem_best_cluster_molecular_properties \
+--model_name Qwen/Qwen3-8B \
 "
 
 export CMD="$LAUNCHER $SCRIPT $ARGS"

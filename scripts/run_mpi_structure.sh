@@ -24,16 +24,17 @@ export LAUNCHER="accelerate launch \
 --main_process_port $MASTER_PORT \
 "
 
-export SCRIPT="../src/llm/train_llm.py"
+export SCRIPT="../src/llm/training/cli_train.py"
 
-export ARGS="--max_records 0 \
+export ARGS="--limit 0 \
 --output_dir ~/results/$SLURM_JOB_ID \
---num_train_epochs 4 \
---eval_steps 1000 \
---eval_limit 8 \
---train_file ~/data/pubchem/arrow/cluster_6M_train.arrow \
---eval_file ~/data/pubchem/arrow/cluster_6M_eval.arrow \
---question_set molecular_properties \
+--per_device_train_batch_size 2 \
+--per_device_eval_batch_size 2 \
+--num_train_epochs 8 \
+--eval_steps 10000 \
+--eval_num_examples 64 \
+--dataset_dir ~/data/pubchem/arrow/pubchem_best_cluster_structure \
+--model_name ~/results/252674 \
 "
 
 export CMD="$LAUNCHER $SCRIPT $ARGS"
