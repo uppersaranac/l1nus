@@ -650,7 +650,7 @@ def process_single_qa(
     :type example: Dict[str, Any]
     :param max_len: Maximum length for the input
     :type max_len: int
-    :param max_label_len: Maximum length for the label (only used for eval)
+    :param max_label_len: Maximum length for the label (only used for eval as lable is generated separately)
     :type max_label_len: int or None
     :param is_train: Whether this is for training or evaluation
     :type is_train: bool
@@ -720,7 +720,10 @@ def process_single_qa(
             print(f"Warning: Answer not found in input_ids for example with answer {answer_text}")
         processed_example["labels"] = label  # Assign 1D list directly
     else:
-        # For evaluation: right-align answer tokens
+        # For evaluation: right-align answer tokens. right aligned is conventionally used
+        # for answers as sometimes an answer can have a -100 in the middle of it, so when
+        # you scan from the left on right aligned data, you will find the answer including the 
+        # internal -100s.
         formatted_answer = example["assistant_template"].format(**example['metadata'])
         ans_enc = tok(formatted_answer, truncation=True, add_special_tokens=False, max_length=max_label_len, return_tensors="np")
         answer = ans_enc["input_ids"].tolist()[0]
