@@ -46,7 +46,8 @@ def interact_with_chatbot(user_input, conversation_history):
     # Step 2.3: Generate a response using the chatbot pipeline
 
     messages = [
-        {"role": "system", "content": "Do not think. Place the answer between <|extra_100|> and <|extra_101|>.  The answer should be a number."},
+        {"role": "system", "content": "Do not think. " if args.disable_thinking else ""},
+#        {"role": "system", "content": "Do not think. Place the answer between <|extra_100|> and <|extra_101|>.  The answer should be a number."},
         {"role": "user", "content": conversation_text},
     ]
     
@@ -93,7 +94,9 @@ def interact_with_chatbot(user_input, conversation_history):
     else:
         # Fallback to standard pipeline for models that don't support enable_thinking
         outputs = pipeline(messages, max_new_tokens=1024)
+        print(messages)
         response_text = outputs[0]["generated_text"][-1]
+        print("using fallback generation")
     
     return response_text
 
