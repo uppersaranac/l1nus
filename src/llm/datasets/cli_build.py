@@ -54,6 +54,8 @@ def main() -> None:
         ds = ds.select(range(args.limit))
     if "split" in ds.column_names:
         split_ds = split_by_column(ds)
+    else:
+        raise ValueError(f"Input dataset {q_path} does not have a 'split' column.")
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
     tokenizer.padding_side = "left"

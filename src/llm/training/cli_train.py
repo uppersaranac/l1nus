@@ -191,7 +191,7 @@ def main() -> None:
                 train_iter.set_postfix(exact_match=f"{metric_val:.4f}")
         if accelerator.is_main_process:
             exact_val = epoch_metrics.get("exact_match", 0)
-            if exact_val > best_exact:
+            if exact_val >= best_exact:
                 best_exact = exact_val
                 best_dir = Path(args.output_dir).expanduser() / "best_model"
                 accelerator.print(f"New best exact_match {exact_val:.4f} → saving model to {best_dir}")
