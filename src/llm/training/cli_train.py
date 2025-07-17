@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 
 from accelerate import Accelerator, DistributedDataParallelKwargs
-from datasets import load_from_disk
+from datasets import DatasetDict, load_from_disk
 from llm.llm_apis import compute_metrics_closure, do_evaluate
 from torch.utils.data import DataLoader  # local import to avoid circular issues
 from tqdm import tqdm
@@ -87,6 +87,9 @@ def main() -> None:
     dataset_dir = Path(args.dataset_dir).expanduser()
     ds_min_path = dataset_dir / "minimal"
     ds_min = load_from_disk(str(ds_min_path))
+    # Add a type check to ensure we have a DatasetDict
+    if not isinstance(ds_min, DatasetDict):
+        raise TypeError(f"Expected a DatasetDict from {ds_min_path}, but got {type(ds_min)}")
 
     train_dataset = ds_min["train"]
     if args.limit is not None and args.limit > 0:
