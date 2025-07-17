@@ -102,7 +102,7 @@ class AllPropertiesProcessor(QuestionSetProcessor):
         return answers, mask
 
 
-def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100) -> dict:
+def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100, **generation_kwargs) -> dict:
     """
     Run generation-based evaluation and log exact-match metric.
 
@@ -120,6 +120,7 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
     :type max_new_tokens: int
     :param num_examples: Number of examples to evaluate.
     :type num_examples: int
+    :param generation_kwargs: Additional keyword arguments for generation (e.g., repetition_penalty, temperature, do_sample, top_p).
     :return: Dictionary of evaluation metrics.
     :rtype: dict
     """
@@ -138,6 +139,7 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
                 input_ids=batch["input_ids"],
                 attention_mask=batch["attention_mask"],
                 max_new_tokens=max_new_tokens,
+                **generation_kwargs
             )
         generated_padded = accelerator.pad_across_processes(
                 generated, dim=1, pad_index=tokenizer.pad_token_id)
@@ -158,6 +160,7 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
                 tokenizer,
                 accelerator.unwrap_model(model).eval(),
                 sample_ds,
+                **generation_kwargs
             )
             sample_ds.set_format(type="torch", columns=["labels"])
             labels_tensor = sample_ds["labels"].masked_fill(sample_ds["labels"] == -100, tokenizer.pad_token_id)
@@ -659,6 +662,9 @@ def process_single_qa(
     :return: Dictionary with tokenized input_ids, attention_mask, and labels
     :rtype: Dict[str, Any]
     """
+    # Get the EOS token from the tokenizer
+    eos_token = tok.eos_token if tok.eos_token is not None else ""
+    
     # Build the prompt
     if is_train:
         # For training, we include both question and answer
@@ -667,14 +673,14 @@ def process_single_qa(
             prompt = [
                 {"role": "system", "content": system_prompt_override if system_prompt_override is not None else example["system_prompt"]},
                 {"role": "user", "content": example["question_template"].format(**example['metadata'])},
-                {"role": "assistant", "content": example["assistant_template"].format(**example['metadata'])}
+                {"role": "assistant", "content": example["assistant_template"].format(**example['metadata']) + eos_token}
             ]
             prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
         else:
             # Fallback for models without chat templates
             system = system_prompt_override if system_prompt_override is not None else example["system_prompt"]
             question = example["question_template"].format(**example['metadata'])
-            answer = example["assistant_template"].format(**example['metadata'])
+            answer = example["assistant_template"].format(**example['metadata']) + eos_token
             prompt_str = f"{system}\n\nuser: {question}\n\nassistant: {answer}"
     else:
         # For evaluation, only include the question (no answer)
@@ -705,7 +711,7 @@ def process_single_qa(
     
     if is_train:
         # For training: find the answer span in the prompt
-        answer_text = str(example["assistant_template"].format(**example['metadata']))
+        answer_text = str(example["assistant_template"].format(**example['metadata']) + eos_token)
         
         input_ids_list = input_ids.tolist() # Already 1D
         
@@ -724,7 +730,7 @@ def process_single_qa(
         # for answers as sometimes an answer can have a -100 in the middle of it, so when
         # you scan from the left on right aligned data, you will find the answer including the 
         # internal -100s.
-        formatted_answer = example["assistant_template"].format(**example['metadata'])
+        formatted_answer = example["assistant_template"].format(**example['metadata']) + eos_token
         ans_enc = tok(formatted_answer, truncation=True, add_special_tokens=False, max_length=max_label_len, return_tensors="np")
         answer = ans_enc["input_ids"].tolist()[0]
         
@@ -802,32 +808,80 @@ def find_answer_token_positions(tokenizer: Any, prompt_str: str, answer_str: str
         add_special_tokens=False
     )
     answer_ids = answer_enc["input_ids"]
-    for i in range(len(input_ids_list) - len(answer_ids) + 1):
-        if input_ids_list[i : i + len(answer_ids)] == answer_ids:
-            return (i, i + len(answer_ids))
+    
+    # Ensure we have proper Python lists for comparison
+    if hasattr(answer_ids, 'tolist'):
+        answer_list = answer_ids.tolist()
+    elif hasattr(answer_ids, '__iter__'):
+        answer_list = list(answer_ids)
+    else:
+        answer_list = [answer_ids]
+    
+    for i in range(len(input_ids_list) - len(answer_list) + 1):
+        # Convert input slice to list for comparison
+        input_slice = input_ids_list[i : i + len(answer_list)]
+        if hasattr(input_slice, 'tolist') and not isinstance(input_slice, list):
+            input_slice = input_slice.tolist()
+        elif not isinstance(input_slice, list):
+            input_slice = list(input_slice)
+        
+        if input_slice == answer_list:
+            return (i, i + len(answer_list))
     return None
 
 exact_match = evaluate.load("exact_match")
 
-def _norm(s: str) -> str:
+def _norm(s: str, tokenizer: Any = None) -> str:
     """
     Normalize prediction/label strings for exact-match comparison.
-    For multi-answer questions (e.g., all_properties), extracts the answer after the last colon and space, up to the next whitespace or '<'.
+    Extracts the answer after the last ": " until whitespace, period, or EOS token.
+    If no colon, extracts everything after the last whitespace.
 
     :param s: Input string.
+    :param tokenizer: Tokenizer instance to get the EOS token from.
     :return: Normalized string.
     """
+    import re
+    
+    # Get EOS token from tokenizer if available
+    eos_token = None
+    if tokenizer is not None and hasattr(tokenizer, 'eos_token') and tokenizer.eos_token is not None:
+        eos_token = tokenizer.eos_token
+    
     # Find the last colon followed by a space
     idx = s.rfind(': ')
     if idx != -1:
-        substr = s[idx + 2:]
-        # Extract up to the next whitespace or '<'
-        import re
-        match = re.match(r"([^\s<]+)", substr)
+        # Extract everything after ": "
+        answer_part = s[idx + 2:]
+        
+        # Handle different cases based on whether we have an EOS token
+        if eos_token:
+            # Split by EOS token and take the first part
+            if eos_token in answer_part:
+                answer_part = answer_part.split(eos_token)[0]
+        
+        # Now extract the answer until whitespace or period
+        match = re.match(r"([^\s\.]*)", answer_part)
         if match:
-            return match.group(1).strip().rstrip('.')
-        return substr.strip().split()[0] if substr.strip() else ''
-    return s.strip().rstrip('.')
+            result = match.group(1).strip()
+            return result
+        return answer_part.strip()
+    
+    # If no ": " found, try to extract everything after the last whitespace
+    # First clean up EOS tokens
+    result = s.strip()
+    if eos_token and result.endswith(eos_token):
+        result = result[:-len(eos_token)].strip()
+    
+    # Find the last whitespace and extract everything after it
+    last_space_idx = result.rfind(' ')
+    if last_space_idx != -1:
+        # Extract everything after the last space
+        final_answer = result[last_space_idx + 1:].strip().rstrip('.')
+        return final_answer
+    
+    # If no whitespace, clean the whole string
+    return result.rstrip('.')
 
 
 def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
@@ -868,8 +922,8 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             filtered_labels = [filter_out_of_range(seq, tokenizer.vocab_size, tokenizer.pad_token_id) for seq in labels]
             decoded_preds = tokenizer.batch_decode(filtered_preds, skip_special_tokens=True)
             decoded_labels = tokenizer.batch_decode(filtered_labels, skip_special_tokens=True)
-            decoded_preds = [_norm(p) for p in decoded_preds]
-            decoded_labels = [_norm(label) for label in decoded_labels]
+            decoded_preds = [_norm(p, tokenizer) for p in decoded_preds]
+            decoded_labels = [_norm(label, tokenizer) for label in decoded_labels]
             all_preds.extend(decoded_preds)
             all_labels.extend(decoded_labels)
         except OverflowError:
@@ -889,7 +943,7 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             return {}
     return compute_metrics
 
-def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any) -> list[str]:
+def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any, **generation_kwargs) -> list[str]:
     """
     Perform generation.  Will not work with distributed training.
 
@@ -897,6 +951,7 @@ def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any) ->
     :param tokenizer: Tokenizer instance.
     :param model: Model instance.
     :param data: Input data.
+    :param generation_kwargs: Additional keyword arguments for generation (e.g., repetition_penalty, temperature, do_sample, top_p).
     :return: A list of generated prediction strings.
     """
     data.set_format(type="torch", columns=["input_ids", "attention_mask"])
@@ -909,9 +964,9 @@ def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any) ->
             input_ids=input_ids,
             attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
-            # num_beams=num_beams,
-            # do_sample=False,
-            # early_stopping=True
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            **generation_kwargs
         ).to('cpu').numpy()
 
     # Decode each sequence in the batch

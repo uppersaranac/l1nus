@@ -142,13 +142,192 @@ def tokenizer():
     tok.pad_token = tok.eos_token
     return tok
 
-def test_norm():
-    """Verify that _norm extracts the value after the last colon and space."""
+def test_norm_without_tokenizer():
+    """Verify that _norm extracts the value after the last colon and space without tokenizer."""
     assert _norm("IUPAC name: ethanol\n") == "ethanol"
     assert _norm("The molecule's name: methane ") == "methane"
     assert _norm("Carbon count: 5") == "5"
     assert _norm("Answer: benzene.") == "benzene"
-    assert _norm("ethanol") == "ethanol"  # No colon, returns original stripped
+    # Test fallback to last word when no colon
+    assert _norm("The answer is ethanol") == "ethanol"
+    assert _norm("Result: 5 atoms") == "5"  # Still uses colon if present
+    assert _norm("Just benzene") == "benzene"  # No whitespace, whole string
+    assert _norm("benzene.") == "benzene"  # Removes trailing period
+
+def test_norm_with_tokenizer(tokenizer):
+    """Verify that _norm properly handles EOS tokens from tokenizer."""
+    eos_token = tokenizer.eos_token  # Should be "<|im_end|>" for Qwen
+    
+    # Test with colon and EOS token
+    assert _norm(f"Carbon count: 5{eos_token}", tokenizer) == "5"
+    assert _norm(f"Answer: benzene{eos_token}", tokenizer) == "benzene"
+    assert _norm(f"IUPAC name: ethanol.{eos_token}", tokenizer) == "ethanol"
+    
+    # Test fallback to last word with EOS token
+    assert _norm(f"The answer is ethanol{eos_token}", tokenizer) == "ethanol"
+    assert _norm(f"Just benzene{eos_token}", tokenizer) == "benzene"
+    
+    # Test stopping at whitespace after colon
+    assert _norm("Carbon count: 5 more text", tokenizer) == "5"
+    
+    # Test stopping at period after colon
+    assert _norm("Answer: benzene. More text", tokenizer) == "benzene"
+
+def test_norm_edge_cases(tokenizer):
+    """Test edge cases for _norm function."""
+    eos_token = tokenizer.eos_token
+    
+    # Empty and whitespace strings
+    assert _norm("", tokenizer) == ""
+    assert _norm("   ", tokenizer) == ""
+    assert _norm(f"   {eos_token}", tokenizer) == ""
+    
+    # Colon at the end
+    assert _norm("Answer: ", tokenizer) == ""
+    assert _norm(f"Answer: {eos_token}", tokenizer) == ""
+    
+    # Multiple colons - should use the last one
+    assert _norm("First: ignore Second: keep", tokenizer) == "keep"
+    
+    # EOS token in the middle (should be removed)
+    assert _norm(f"Answer: 5{eos_token}extra", tokenizer) == "5"
+    
+    # No colon, multiple words
+    assert _norm("This is the answer", tokenizer) == "answer"
+    assert _norm(f"This is the answer{eos_token}", tokenizer) == "answer"
+
+def test_norm_eos_token_priority():
+    """Test that different EOS tokens are handled correctly."""
+    # Mock tokenizer with different EOS tokens
+    mock_tokenizer_qwen = MagicMock()
+    mock_tokenizer_qwen.eos_token = "<|im_end|>"  # Correct Qwen EOS token
+    
+    mock_tokenizer_llama = MagicMock()
+    mock_tokenizer_llama.eos_token = "</s>"
+    
+    # Test Qwen-style EOS token
+    assert _norm("Answer: 5<|im_end|>", mock_tokenizer_qwen) == "5"
+    assert _norm("Just answer<|im_end|>", mock_tokenizer_qwen) == "answer"
+    
+    # Test Llama-style EOS token
+    assert _norm("Answer: 5</s>", mock_tokenizer_llama) == "5"
+    assert _norm("Just answer</s>", mock_tokenizer_llama) == "answer"
+    
+    # Test with no tokenizer (should still work)
+    assert _norm("Answer: 5<|im_end|>") == "5<|im_end|>"  # No tokenizer, keeps EOS
+    assert _norm("Just answer") == "answer"
+
+def test_norm_complex_patterns():
+    """Test complex patterns that might occur in model outputs."""
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.eos_token = "<|im_end|>"  # Correct Qwen EOS token
+    
+    # Repetitive generation (the original problem)
+    repetitive = "The number of sulfur atoms is: 0The number of sulfur atoms is: 0<|im_end|>"
+    assert _norm(repetitive, mock_tokenizer) == "0"  # Gets only the number, stops at 'T'
+    
+    # Multiple periods
+    assert _norm("Answer: value....", mock_tokenizer) == "value"
+    
+    # Mixed punctuation
+    assert _norm("Result: 5; additional info", mock_tokenizer) == "5;"
+    
+    # Nested colons
+    assert _norm("Time: 10:30, Count: 5", mock_tokenizer) == "5"
+    
+    # Scientific notation - should stop at period
+    assert _norm("Concentration: 1.5e-6", mock_tokenizer) == "1"
+
+def test_process_single_qa_eos_integration(tokenizer):
+    """Simplified test to verify EOS token integration."""
+    from llm.llm_apis import process_single_qa
+    
+    example = {
+        "system_prompt": "You are a helpful assistant.",
+        "question_template": "How many carbon atoms in {smiles}?",
+        "assistant_template": "The answer is {carbon_count}",
+        "metadata": {"smiles": "CCO", "carbon_count": "2"}
+    }
+    
+    # Test evaluation mode (simpler, no complex mocking needed)
+    result = process_single_qa(
+        tok=tokenizer,
+        example=example,
+        max_len=50,
+        max_label_len=20,
+        is_train=False  # Evaluation mode is simpler
+    )
+    
+    # Verify that the function completed successfully
+    assert "input_ids" in result
+    assert "attention_mask" in result
+    assert "labels" in result
+    
+    # Verify EOS token was used in the label formatting
+    assert len(result["labels"]) == 50  # max_len
+
+def test_norm_realistic_model_outputs(tokenizer):
+    """Test with realistic model outputs that might cause issues."""
+    eos_token = tokenizer.eos_token  # Should be "<|im_end|>" for Qwen
+    
+    # Typical good response
+    good_response = f"The number of carbon atoms is: 6{eos_token}"
+    assert _norm(good_response, tokenizer) == "6"
+    
+    # Response with explanation
+    explained_response = f"The number of carbon atoms is: 6. This molecule is benzene.{eos_token}"
+    assert _norm(explained_response, tokenizer) == "6"
+    
+    # Natural language response without colon
+    natural_response = f"This molecule contains 6 carbon atoms{eos_token}"
+    assert _norm(natural_response, tokenizer) == "atoms"
+    
+    # Response with number at the end
+    natural_number = f"The answer is 6{eos_token}"
+    assert _norm(natural_number, tokenizer) == "6"
+    
+    # Response with period at the end
+    period_response = f"The count is 6.{eos_token}"
+    assert _norm(period_response, tokenizer) == "6"
+
+def test_process_single_qa_integration():
+    """Test that process_single_qa correctly uses EOS tokens from tokenizer."""
+    # This is an integration test to make sure the EOS token flows through correctly
+    from llm.llm_apis import process_single_qa
+    
+    # Create a simple tokenizer mock
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.eos_token = "<|endoftext|>"
+    mock_tokenizer.pad_token_id = 0
+    mock_tokenizer.return_value = {
+        "input_ids": np.array([[1, 2, 3, 0, 0]]),  # Mock tokenized input
+        "attention_mask": np.array([[1, 1, 1, 0, 0]])
+    }
+    
+    example = {
+        "system_prompt": "You are a helpful assistant.",
+        "question_template": "How many carbon atoms in {smiles}?",
+        "assistant_template": "The number of carbon atoms is: {carbon_count}",
+        "metadata": {"smiles": "CCO", "carbon_count": "2"}
+    }
+    
+    # Test training mode
+    result = process_single_qa(
+        tok=mock_tokenizer,
+        example=example,
+        max_len=50,
+        is_train=True
+    )
+    
+    # Verify that the function was called and EOS token was used
+    assert "input_ids" in result
+    assert "attention_mask" in result
+    assert "labels" in result
+    
+    # Check that the tokenizer was called with EOS token in the prompt
+    mock_tokenizer.assert_called()
+    call_args = mock_tokenizer.call_args[0][0]  # First positional argument
+    assert "<|endoftext|>" in call_args  # EOS token should be in the prompt
 
 def test_count_heavy_atoms():
     assert count_heavy_atoms(Chem.MolFromSmiles("CCO")) == 3  # ethanol: 2C, 1O

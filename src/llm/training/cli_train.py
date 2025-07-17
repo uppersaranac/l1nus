@@ -56,6 +56,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--model_dtype", type=str, default="bfloat16", choices=["float16", "bfloat16", "float32"])
     p.add_argument("--no_tqdm", action="store_true", help="Disable tqdm progress bars.")
     p.add_argument("--limit", type=int, default=None, help="If set, truncate the training set to this many examples.")
+    p.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty for generation")
+    p.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
+    p.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
+    p.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
     return p.parse_args()
 
 
@@ -167,7 +171,14 @@ def main() -> None:
                     logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, last_loss)
 
             if global_step % args.eval_steps == 0 and global_step != 0:
-                eval_metrics = do_evaluate(accelerator, model, eval_loader, tokenizer, compute_metrics, args.max_new_tokens, args.num_example_preds)
+                eval_metrics = do_evaluate(
+                    accelerator, model, eval_loader, tokenizer, compute_metrics, 
+                    args.max_new_tokens, args.num_example_preds,
+                    repetition_penalty=args.repetition_penalty,
+                    temperature=args.temperature,
+                    do_sample=args.do_sample,
+                    top_p=args.top_p
+                )
                 if not args.no_tqdm and hasattr(train_iter, 'set_postfix') and eval_metrics is not None:
                     metric_val = eval_metrics.get('exact_match', None)
                     if metric_val is not None:
@@ -184,6 +195,10 @@ def main() -> None:
             compute_metrics,
             args.max_new_tokens,
             args.eval_num_examples,
+            repetition_penalty=args.repetition_penalty,
+            temperature=args.temperature,
+            do_sample=args.do_sample,
+            top_p=args.top_p
         )
         if not args.no_tqdm and 'train_iter' in locals() and hasattr(train_iter, 'set_postfix') and epoch_metrics is not None:
             metric_val = epoch_metrics.get('exact_match', None)
@@ -211,6 +226,10 @@ def main() -> None:
         compute_metrics,
         args.max_new_tokens,
         args.eval_num_examples,
+        repetition_penalty=args.repetition_penalty,
+        temperature=args.temperature,
+        do_sample=args.do_sample,
+        top_p=args.top_p
     )
     if accelerator.is_main_process:
         unwrapped = accelerator.unwrap_model(model)

@@ -24,3 +24,5 @@ applyTo: "**"
 ## Testing and validation
 - Use pytest for unit testing
 - Generate unit tests for all new functions and classes
+- Update unit tests for any changes in functionality
+- Unit tests are in the `tests` directory
