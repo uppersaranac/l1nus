@@ -27,6 +27,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_new_tokens", type=int, default=1024, help="Maximum number of new tokens to generate")
     parser.add_argument("--limit", type=int, default=None, help="If set, truncate the evaluation set to this many examples")
     parser.add_argument("--output_csv", type=str, default=None, help="Path to CSV file for gold/prediction output (default: dataset_dir/eval_predictions.csv)")
+    parser.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty for generation")
+    parser.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
+    parser.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
+    parser.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
     return parser.parse_args()
 
 def main() -> None:
@@ -70,7 +74,11 @@ def main() -> None:
         tokenizer,
         compute_metrics,
         args.max_new_tokens,
-        num_examples=len(dataset)
+        num_examples=len(dataset),
+        repetition_penalty=args.repetition_penalty,
+        temperature=args.temperature,
+        do_sample=args.do_sample,
+        top_p=args.top_p
     )
     logger.info(f"Evaluation metrics: {metrics}")
 
@@ -80,7 +88,16 @@ def main() -> None:
     else:
         csv_path = str(Path(args.dataset_dir) / "eval_predictions.csv")
     logger.info(f"Generating predictions and writing to {csv_path}")
-    preds = do_generation(args.max_new_tokens, tokenizer, accelerator.unwrap_model(model).eval(), dataset)
+    preds = do_generation(
+        args.max_new_tokens,
+        tokenizer,
+        accelerator.unwrap_model(model).eval(),
+        dataset,
+        repetition_penalty=args.repetition_penalty,
+        temperature=args.temperature,
+        do_sample=args.do_sample,
+        top_p=args.top_p
+    )
     dataset.set_format(type="torch", columns=["labels"])
     labels_tensor = dataset["labels"].masked_fill(dataset["labels"] == -100, tokenizer.pad_token_id)
     gold = tokenizer.batch_decode(labels_tensor, skip_special_tokens=True)
