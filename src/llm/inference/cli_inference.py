@@ -21,10 +21,10 @@ parser.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sa
 args = parser.parse_args()
 
 model = AutoModelForCausalLM.from_pretrained(
-    str(Path(args.model_name_or_path).expanduser()),
+    str(Path(args.model_name).expanduser()),
     torch_dtype=torch.bfloat16,
 )
-tokenizer = AutoTokenizer.from_pretrained(str(Path(args.model_name_or_path).expanduser()))
+tokenizer = AutoTokenizer.from_pretrained(str(Path(args.model_name).expanduser()))
 
 pipe = pipeline(
     "text-generation",
@@ -118,8 +118,8 @@ def interact_with_chatbot(user_input, conversation_history):
 
 # Step 3: Define a function to delete the model files from the cache directory
 def delete_model_files():
-    if args.model_name_or_path.startswith("microsoft/") or args.model_name_or_path.startswith("huggingface/"):
-        cache_dir = os.path.expanduser(f"~/.cache/huggingface/hub/models--{args.model_name_or_path.replace('/', '--')}")
+    if args.model_name.startswith("microsoft/") or args.model_name.startswith("huggingface/"):
+        cache_dir = os.path.expanduser(f"~/.cache/huggingface/hub/models--{args.model_name.replace('/', '--')}")
     else:
         print("Skipping model file deletion for local models.")
         return
@@ -138,7 +138,7 @@ def delete_model_files():
 atexit.register(delete_model_files)
 
 # Step 5: Start the conversation loop
-print(f"Welcome to the MSDC Chatbot! (Model: {args.model_name_or_path})")
+print(f"Welcome to the MSDC Chatbot! (Model: {args.model_name})")
 print("Type 'quit' to end the conversation.\n")
 
 conversation_history = []
