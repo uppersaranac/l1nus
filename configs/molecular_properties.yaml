@@ -6,92 +6,92 @@ question_set: molecular_properties
 questions:
   - id: carbon_count
     user_template: "How many carbon atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of carbon atoms is: {carbon_count}"
+    assistant_template: "The number of carbon atoms is <answer>{carbon_count}</answer>\n"
   - id: heavy_atom_count
     user_template: "How many heavy (non-hydrogen) atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of heavy (non-hydrogen) atoms is: {heavy_atom_count}"
+    assistant_template: "The number of heavy (non-hydrogen) atoms is <answer>{heavy_atom_count}</answer>\n"
   - id: non_hydrogen_bond_count
     user_template: "How many bonds not to hydrogen are in the molecule {smiles}?\n"
-    assistant_template: "The number of bonds not to hydrogen is: {non_hydrogen_bond_count}"
+    assistant_template: "The number of bonds not to hydrogen is <answer>{non_hydrogen_bond_count}</answer>\n"
   - id: positive_formal_charge_count
     user_template: "How many atoms with positive formal charge are in the molecule {smiles}?\n"
-    assistant_template: "The number of atoms with positive formal charge is: {positive_formal_charge_count}"
+    assistant_template: "The number of atoms with positive formal charge is <answer>{positive_formal_charge_count}</answer>\n"
   - id: negative_formal_charge_count
     user_template: "How many atoms with negative formal charge are in the molecule {smiles}?\n"
-    assistant_template: "The number of atoms with negative formal charge is: {negative_formal_charge_count}"
+    assistant_template: "The number of atoms with negative formal charge is <answer>{negative_formal_charge_count}</answer>\n"
   - id: nitrogen_count
     user_template: "How many nitrogen atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of nitrogen atoms is: {nitrogen_count}"
+    assistant_template: "The number of nitrogen atoms is <answer>{nitrogen_count}</answer>\n"
   - id: oxygen_count
     user_template: "How many oxygen atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of oxygen atoms is: {oxygen_count}"
+    assistant_template: "The number of oxygen atoms is <answer>{oxygen_count}</answer>\n"
   - id: sulfur_count
     user_template: "How many sulfur atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of sulfur atoms is: {sulfur_count}"
+    assistant_template: "The number of sulfur atoms is <answer>{sulfur_count}</answer>\n"
   - id: phosphorus_count
     user_template: "How many phosphorus atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of phosphorus atoms is: {phosphorus_count}"
+    assistant_template: "The number of phosphorus atoms is <answer>{phosphorus_count}</answer>\n"
   - id: chlorine_count
     user_template: "How many chlorine atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of chlorine atoms is: {chlorine_count}"
+    assistant_template: "The number of chlorine atoms is <answer>{chlorine_count}</answer>\n"
   - id: fluorine_count
     user_template: "How many fluorine atoms are in the molecule {smiles}?\n"
-    assistant_template: "The number of fluorine atoms is: {fluorine_count}"
+    assistant_template: "The number of fluorine atoms is <answer>{fluorine_count}</answer>\n"
   - id: ring_count
     user_template: "How many rings are in the molecule {smiles}?\n"
-    assistant_template: "The number of rings is: {ring_count}"
+    assistant_template: "The number of rings is <answer>{ring_count}</answer>\n"
   - id: aromatic_ring_count
     user_template: "How many aromatic rings are in the molecule {smiles}?\n"
-    assistant_template: "The number of aromatic rings is: {aromatic_ring_count}"
+    assistant_template: "The number of aromatic rings is <answer>{aromatic_ring_count}</answer>\n"
   - id: double_bond_count
     user_template: "How many double bonds are in the molecule {smiles}?\n"
-    assistant_template: "The number of double bonds is: {double_bond_count}"
+    assistant_template: "The number of double bonds is <answer>{double_bond_count}</answer>\n"
   - id: triple_bond_count
     user_template: "How many triple bonds are in the molecule {smiles}?\n"
-    assistant_template: "The number of triple bonds is: {triple_bond_count}"
+    assistant_template: "The number of triple bonds is <answer>{triple_bond_count}</answer>\n"
   - id: stereo_double_bond_count
     user_template: "How many stereo double bonds are in the molecule {smiles}?\n"
-    assistant_template: "The number of stereo double bonds is: {stereo_double_bond_count}"
+    assistant_template: "The number of stereo double bonds is <answer>{stereo_double_bond_count}</answer>\n"
   - id: stereocenter_count
     user_template: "How many stereocenters are in the molecule {smiles}?\n"
-    assistant_template: "The number of stereocenters is: {stereocenter_count}"
+    assistant_template: "The number of stereocenters is <answer>{stereocenter_count}</answer>\n"
   - id: five_membered_ring_count
     user_template: "How many 5-membered rings are in the molecule {smiles}?\n"
-    assistant_template: "The number of 5-membered rings is: {five_membered_ring_count}"
+    assistant_template: "The number of 5-membered rings is <answer>{five_membered_ring_count}</answer>\n"
   - id: aromatic_five_membered_ring_count
     user_template: "How many aromatic 5-membered rings are in the molecule {smiles}?\n"
-    assistant_template: "The number of aromatic 5-membered rings is: {aromatic_five_membered_ring_count}"
+    assistant_template: "The number of aromatic 5-membered rings is <answer>{aromatic_five_membered_ring_count}</answer>\n"
   - id: six_membered_ring_count
     user_template: "How many 6-membered rings are in the molecule {smiles}?\n"
-    assistant_template: "The number of 6-membered rings is: {six_membered_ring_count}"
+    assistant_template: "The number of 6-membered rings is <answer>{six_membered_ring_count}</answer>\n"
   - id: aromatic_six_membered_ring_count
     user_template: "How many aromatic 6-membered rings are in the molecule {smiles}?\n"
-    assistant_template: "The number of aromatic 6-membered rings is: {aromatic_six_membered_ring_count}"
+    assistant_template: "The number of aromatic 6-membered rings is <answer>{aromatic_six_membered_ring_count}</answer>\n"
   - id: fused_ring_count
     user_template: "How many rings in the molecule {smiles} are fused to at least one other ring?\n"
-    assistant_template: "The number of fused rings is: {fused_ring_count}"
+    assistant_template: "The number of fused rings is <answer>{fused_ring_count}</answer>\n"
   - id: aromatic_heterocycle_count
     user_template: "How many aromatic heterocycles are in the molecule {smiles}?\n"
-    assistant_template: "The number of aromatic heterocycles is: {aromatic_heterocycle_count}"
+    assistant_template: "The number of aromatic heterocycles is <answer>{aromatic_heterocycle_count}</answer>\n"
   - id: aromatic_carbocycle_count
     user_template: "How many aromatic carbocycles are in the molecule {smiles}?\n"
-    assistant_template: "The number of aromatic carbocycles is: {aromatic_carbocycle_count}"
+    assistant_template: "The number of aromatic carbocycles is <answer>{aromatic_carbocycle_count}</answer>\n"
   - id: aliphatic_heterocycle_count
     user_template: "How many aliphatic heterocycles are in the molecule {smiles}?\n"
-    assistant_template: "The number of aliphatic heterocycles is: {aliphatic_heterocycle_count}"
+    assistant_template: "The number of aliphatic heterocycles is <answer>{aliphatic_heterocycle_count}</answer>\n"
   - id: aliphatic_carbocycle_count
     user_template: "How many aliphatic carbocycles are in the molecule {smiles}?\n"
-    assistant_template: "The number of aliphatic carbocycles is: {aliphatic_carbocycle_count}"
+    assistant_template: "The number of aliphatic carbocycles is <answer>{aliphatic_carbocycle_count}</answer>\n"
   - id: saturated_heterocycle_count
     user_template: "How many saturated heterocycles are in the molecule {smiles}?\n"
-    assistant_template: "The number of saturated heterocycles is: {saturated_heterocycle_count}"
+    assistant_template: "The number of saturated heterocycles is <answer>{saturated_heterocycle_count}</answer>\n"
   - id: saturated_carbocycle_count
     user_template: "How many saturated carbocycles are in the molecule {smiles}?\n"
-    assistant_template: "The number of saturated carbocycles is: {saturated_carbocycle_count}"
+    assistant_template: "The number of saturated carbocycles is <answer>{saturated_carbocycle_count}</answer>\n"
   - id: hydrogen_count
     user_template: "How many hydrogens (implicit + explicit) are in the molecule {smiles}?\n"
-    assistant_template: "The number of hydrogens is: {hydrogen_count}"
+    assistant_template: "The number of hydrogens is <answer>{hydrogen_count}</answer>\n"
   - id: longest_chain_length
     user_template: "What is the length of the longest acyclic chain (heavy atoms only, excluding ring bonds) in the molecule {smiles}?\n"
-    assistant_template: "The length of the longest acyclic chain is: {longest_chain_length}"
+    assistant_template: "The length of the longest acyclic chain is <answer>{longest_chain_length}</answer>\n"
 

@@ -8,34 +8,34 @@ questions:
     user_template: "Analyze the following molecular properties for the molecule {smiles}: carbon atoms, nitrogen atoms, oxygen atoms, sulfur atoms, phosphorus atoms, chlorine atoms, fluorine atoms, rings, aromatic rings, double bonds, triple bonds, stereo double bonds, stereocenters, and the IUPAC name. Provide a comprehensive report."
     assistant_template: |
       Molecular Analysis of {smiles}:
-      
-      Carbon atoms: {carbon_count}
-      Nitrogen atoms: {nitrogen_count}
-      Oxygen atoms: {oxygen_count}
-      Sulfur atoms: {sulfur_count}
-      Phosphorus atoms: {phosphorus_count}
-      Chlorine atoms: {chlorine_count}
-      Fluorine atoms: {fluorine_count}
-      Rings: {ring_count}
-      Aromatic rings: {aromatic_ring_count}
-      Double bonds: {double_bond_count}
-      Triple bonds: {triple_bond_count}
-      Stereo double bonds: {stereo_double_bond_count}
-      Stereocenters: {stereocenter_count}
-      Heavy atoms: {heavy_atom_count}
-      Bonds not to hydrogen: {non_hydrogen_bond_count}
-      Atoms with positive formal charge: {positive_formal_charge_count}
-      Atoms with negative formal charge: {negative_formal_charge_count}
-      5-membered rings: {five_membered_ring_count}
-      Aromatic 5-membered rings: {aromatic_five_membered_ring_count}
-      6-membered rings: {six_membered_ring_count}
-      Aromatic 6-membered rings: {aromatic_six_membered_ring_count}
-      Fused rings: {fused_ring_count}
-      Aromatic heterocycles: {aromatic_heterocycle_count}
-      Aromatic carbocycles: {aromatic_carbocycle_count}
-      Aliphatic heterocycles: {aliphatic_heterocycle_count}
-      Aliphatic carbocycles: {aliphatic_carbocycle_count}
-      Saturated heterocycles: {saturated_heterocycle_count}
-      Saturated carbocycles: {saturated_carbocycle_count}
-      Hydrogens (implicit + explicit): {hydrogen_count}
-      Longest acyclic chain (heavy atoms only, excluding ring bonds): {longest_chain_length}
+
+      Carbon atoms: <answer>{carbon_count}</answer>
+      Nitrogen atoms: <answer>{nitrogen_count}</answer>
+      Oxygen atoms: <answer>{oxygen_count}</answer>
+      Sulfur atoms: <answer>{sulfur_count}</answer>
+      Phosphorus atoms: <answer>{phosphorus_count}</answer>
+      Chlorine atoms: <answer>{chlorine_count}</answer>
+      Fluorine atoms: <answer>{fluorine_count}</answer>
+      Rings: <answer>{ring_count}</answer>
+      Aromatic rings: <answer>{aromatic_ring_count}</answer>
+      Double bonds: <answer>{double_bond_count}</answer>
+      Triple bonds: <answer>{triple_bond_count}</answer>
+      Stereo double bonds: <answer>{stereo_double_bond_count}</answer>
+      Stereocenters: <answer>{stereocenter_count}</answer>
+      Heavy atoms: <answer>{heavy_atom_count}</answer>
+      Bonds not to hydrogen: <answer>{non_hydrogen_bond_count}</answer>
+      Atoms with positive formal charge: <answer>{positive_formal_charge_count}</answer>
+      Atoms with negative formal charge: <answer>{negative_formal_charge_count}</answer>
+      5-membered rings: <answer>{five_membered_ring_count}</answer>
+      Aromatic 5-membered rings: <answer>{aromatic_five_membered_ring_count}</answer>
+      6-membered rings: <answer>{six_membered_ring_count}</answer>
+      Aromatic 6-membered rings: <answer>{aromatic_six_membered_ring_count}</answer>
+      Fused rings: <answer>{fused_ring_count}</answer>
+      Aromatic heterocycles: <answer>{aromatic_heterocycle_count}</answer>
+      Aromatic carbocycles: <answer>{aromatic_carbocycle_count}</answer>
+      Aliphatic heterocycles: <answer>{aliphatic_heterocycle_count}</answer>
+      Aliphatic carbocycles: <answer>{aliphatic_carbocycle_count}</answer>
+      Saturated heterocycles: <answer>{saturated_heterocycle_count}</answer>
+      Saturated carbocycles: <answer>{saturated_carbocycle_count}</answer>
+      Hydrogens (implicit + explicit): <answer>{hydrogen_count}</answer>
+      Longest acyclic chain (heavy atoms only, excluding ring bonds): <answer>{longest_chain_length}</answer>
