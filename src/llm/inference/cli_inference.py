@@ -10,7 +10,7 @@ import torch
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Run LLM chatbot")
-parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B", help="Local path or Hub model name (default: Qwen/Qwen3-1.7B)")
+parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B", help="Local path or Hub model name (default: Qwen/Qwen3-4B)")
 parser.add_argument("--disable_thinking", action="store_true", help="Disable model thinking mode (only works with models that support it like Qwen3)")
 parser.add_argument("--no_history", action="store_true", help="Disable conversation history (treat each question independently)")
 parser.add_argument("--system_prompt", type=str, default=None, help="Custom system prompt to use for the conversation")
@@ -55,7 +55,7 @@ def interact_with_chatbot(user_input, conversation_history):
     if args.system_prompt is not None:
         system_content = args.system_prompt
     else:
-        system_content = "Do not think. " if args.disable_thinking else ""
+        system_content = ""
 
     messages = [
         {"role": "system", "content": system_content},
@@ -68,7 +68,7 @@ def interact_with_chatbot(user_input, conversation_history):
     
     # For models that support the enable_thinking parameter (like Qwen3)
     # We need to check if the tokenizer has the apply_chat_template method and if it accepts enable_thinking
-    if hasattr(tokenizer, 'apply_chat_template') and 'enable_thinking' in tokenizer.apply_chat_template.__code__.co_varnames:
+    if hasattr(tokenizer, 'apply_chat_template'):
         print("Disable thinking flag:", args.disable_thinking)
         # Apply chat template with thinking mode controlled by command-line argument
         text = tokenizer.apply_chat_template(
