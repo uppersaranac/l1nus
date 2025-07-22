@@ -38,10 +38,10 @@ questions:
     user_template: "How many fluorine atoms are in the molecule {smiles}?\n"
     assistant_template: "The number of fluorine atoms is: {fluorine_count}"
   - id: ring_count
-    user_template: "How many rings are in the molecule {smiles} SSSR?\n"
+    user_template: "How many rings are in the molecule {smiles}?\n"
     assistant_template: "The number of rings is: {ring_count}"
   - id: aromatic_ring_count
-    user_template: "How many aromatic rings are in the molecule {smiles} SSSR?\n"
+    user_template: "How many aromatic rings are in the molecule {smiles}?\n"
     assistant_template: "The number of aromatic rings is: {aromatic_ring_count}"
   - id: double_bond_count
     user_template: "How many double bonds are in the molecule {smiles}?\n"
@@ -68,7 +68,7 @@ questions:
     user_template: "How many aromatic 6-membered rings are in the molecule {smiles}?\n"
     assistant_template: "The number of aromatic 6-membered rings is: {aromatic_six_membered_ring_count}"
   - id: fused_ring_count
-    user_template: "How many rings in the molecule {smiles} SSSR are fused to at least one other ring?\n"
+    user_template: "How many rings in the molecule {smiles} are fused to at least one other ring?\n"
     assistant_template: "The number of fused rings is: {fused_ring_count}"
   - id: aromatic_heterocycle_count
     user_template: "How many aromatic heterocycles are in the molecule {smiles}?\n"
