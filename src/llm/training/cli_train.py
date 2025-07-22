@@ -11,6 +11,7 @@ import argparse
 import logging
 import math
 from pathlib import Path
+from typing import cast
 
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from datasets import DatasetDict, load_from_disk
@@ -86,7 +87,7 @@ def main() -> None:
     # ---------------- data ----------------
     dataset_dir = Path(args.dataset_dir).expanduser()
     ds_min_path = dataset_dir / "minimal"
-    ds_min = load_from_disk(str(ds_min_path))
+    ds_min = cast(DatasetDict, load_from_disk(str(ds_min_path)))
     # Add a type check to ensure we have a DatasetDict
     if not isinstance(ds_min, DatasetDict):
         raise TypeError(f"Expected a DatasetDict from {ds_min_path}, but got {type(ds_min)}")

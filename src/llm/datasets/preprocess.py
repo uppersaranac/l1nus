@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, cast
 
 import datasets as hfds
 from datasets import Dataset, DatasetDict
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 def load_questions_jsonl(path: str | Path) -> Dataset:
     """Load the JSONL file produced by *cli_generate.py* into a HF Dataset."""
     # the split argument is set to load all of the data (train, valid, test) into a flat Dataset.
-    ds = hfds.load_dataset("json", data_files=str(path), split="train") # , streaming=True)  streaming dataset doesn't have column names!
+    ds = cast(Dataset, hfds.load_dataset("json", data_files=str(path), split="train")) # , streaming=True)  streaming dataset doesn't have column names!
     logger.info("Loaded Q-A records from %s", path)
     return ds
 
