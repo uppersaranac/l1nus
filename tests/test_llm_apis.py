@@ -7,7 +7,7 @@ import pyarrow as pa
 from unittest.mock import MagicMock
 from transformers import AutoTokenizer
 from llm.llm_apis import (
-    _norm, compute_metrics_closure, do_generation,
+    _norm, _norm_tagged, compute_metrics_closure, do_generation,
     count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
     count_element_atoms, count_carbon_atoms, count_nitrogen_atoms, count_oxygen_atoms, count_sulfur_atoms, count_phosphorus_atoms,
     count_chlorine_atoms, count_fluorine_atoms, count_rings, count_aromatic_rings, count_double_bonds, count_triple_bonds,
@@ -289,6 +289,180 @@ def test_norm_realistic_model_outputs(tokenizer):
     # Response with period at the end
     period_response = f"The count is 6.{eos_token}"
     assert _norm(period_response, tokenizer) == "6"
+
+
+# =================================================
+# Tests for _norm_tagged function
+# =================================================
+
+def test_norm_tagged_basic():
+    """Test basic functionality of _norm_tagged with simple answer tags."""
+    # Basic answer extraction
+    assert _norm_tagged("<answer>42</answer>") == "42"
+    assert _norm_tagged("<answer>ethanol</answer>") == "ethanol"
+    assert _norm_tagged("<answer>benzene</answer>") == "benzene"
+    
+    # With surrounding text
+    text = "The molecular formula is <answer>C6H6</answer> for benzene."
+    assert _norm_tagged(text) == "C6H6"
+
+def test_norm_tagged_with_periods():
+    """Test that trailing periods are removed from tagged answers."""
+    # Period removal
+    assert _norm_tagged("<answer>42.</answer>") == "42"
+    assert _norm_tagged("<answer>ethanol.</answer>") == "ethanol"
+    assert _norm_tagged("<answer>C2H6O.</answer>") == "C2H6O"
+    
+    # Multiple periods
+    assert _norm_tagged("<answer>answer...</answer>") == "answer.."
+    
+    # Period in middle should be preserved
+    assert _norm_tagged("<answer>3.14</answer>") == "3.14"
+    assert _norm_tagged("<answer>3.14.</answer>") == "3.14"
+
+def test_norm_tagged_multiline():
+    """Test _norm_tagged with multiline content between tags."""
+    multiline_text = """
+    The answer is:
+    <answer>
+    6
+    </answer>
+    This is the final result.
+    """
+    assert _norm_tagged(multiline_text) == "6"
+    
+    # Multiline with more complex content
+    complex_multiline = """<answer>
+    The molecule has:
+    - 6 carbon atoms
+    - 6 hydrogen atoms
+    Final answer: benzene
+    </answer>"""
+    expected = "The molecule has:\n    - 6 carbon atoms\n    - 6 hydrogen atoms\n    Final answer: benzene"
+    assert _norm_tagged(complex_multiline) == expected
+
+def test_norm_tagged_whitespace_handling():
+    """Test proper whitespace handling in tagged answers."""
+    # Leading/trailing whitespace inside tags
+    assert _norm_tagged("<answer>  42  </answer>") == "42"
+    assert _norm_tagged("<answer>\n  ethanol  \n</answer>") == "ethanol"
+    assert _norm_tagged("<answer>\t\tbenzene\t\t</answer>") == "benzene"
+    
+    # Whitespace with periods
+    assert _norm_tagged("<answer>  42.  </answer>") == "42"
+    assert _norm_tagged("<answer>\n  ethanol.  \n</answer>") == "ethanol"
+
+def test_norm_tagged_no_tags():
+    """Test fallback behavior when no answer tags are found."""
+    # No tags - should return stripped original string
+    assert _norm_tagged("42") == "42"
+    assert _norm_tagged("  ethanol  ") == "ethanol"
+    assert _norm_tagged("No answer tags here") == "No answer tags here"
+    assert _norm_tagged("") == ""
+    assert _norm_tagged("   ") == ""
+
+def test_norm_tagged_malformed_tags():
+    """Test behavior with malformed or incomplete tags."""
+    # Missing closing tag
+    assert _norm_tagged("<answer>42") == "<answer>42"
+    
+    # Missing opening tag
+    assert _norm_tagged("42</answer>") == "42</answer>"
+    
+    # Empty tags
+    assert _norm_tagged("<answer></answer>") == ""
+    
+    # Tags with only whitespace
+    assert _norm_tagged("<answer>   </answer>") == ""
+    assert _norm_tagged("<answer>\n\t  \n</answer>") == ""
+
+def test_norm_tagged_multiple_tags():
+    """Test behavior when multiple answer tags are present."""
+    # Multiple tags - should extract from first match
+    text = "First <answer>42</answer> and second <answer>24</answer>"
+    assert _norm_tagged(text) == "42"
+    
+    # Nested-like structure (not actually nested due to regex)
+    text = "<answer>outer <answer>inner</answer> content</answer>"
+    assert _norm_tagged(text) == "outer <answer>inner"
+
+def test_norm_tagged_special_content():
+    """Test _norm_tagged with special characters and content types."""
+    # Numbers
+    assert _norm_tagged("<answer>3.14159</answer>") == "3.14159"
+    assert _norm_tagged("<answer>-42</answer>") == "-42"
+    assert _norm_tagged("<answer>1.5e-10</answer>") == "1.5e-10"
+    
+    # Chemical formulas
+    assert _norm_tagged("<answer>C6H12O6</answer>") == "C6H12O6"
+    assert _norm_tagged("<answer>Ca(OH)2</answer>") == "Ca(OH)2"
+    
+    # SMILES strings
+    assert _norm_tagged("<answer>CCO</answer>") == "CCO"
+    assert _norm_tagged("<answer>c1ccccc1</answer>") == "c1ccccc1"
+    
+    # IUPAC names
+    assert _norm_tagged("<answer>2-methylbutane</answer>") == "2-methylbutane"
+    assert _norm_tagged("<answer>N,N-dimethylmethanamine</answer>") == "N,N-dimethylmethanamine"
+
+def test_norm_tagged_case_sensitivity():
+    """Test that _norm_tagged is case sensitive for tags."""
+    # Correct case
+    assert _norm_tagged("<answer>42</answer>") == "42"
+    
+    # Wrong case - should not match
+    assert _norm_tagged("<ANSWER>42</ANSWER>") == "<ANSWER>42</ANSWER>"
+    assert _norm_tagged("<Answer>42</Answer>") == "<Answer>42</Answer>"
+
+def test_norm_tagged_tokenizer_parameter():
+    """Test that tokenizer parameter is handled correctly (though unused)."""
+    # Should work the same regardless of tokenizer parameter
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.eos_token = "<|im_end|>"
+    
+    assert _norm_tagged("<answer>42</answer>") == "42"
+    assert _norm_tagged("<answer>42</answer>", tokenizer=None) == "42"
+    assert _norm_tagged("<answer>42</answer>", tokenizer=mock_tokenizer) == "42"
+    
+    # With periods
+    assert _norm_tagged("<answer>42.</answer>", tokenizer=mock_tokenizer) == "42"
+
+def test_norm_tagged_realistic_llm_outputs():
+    """Test with realistic LLM outputs that might contain answer tags."""
+    # Typical LLM response with explanation
+    response1 = """
+    To find the number of carbon atoms, I need to analyze the molecular structure.
+    
+    Looking at the SMILES string CCO:
+    - First C is a carbon atom
+    - Second C is a carbon atom  
+    - O is an oxygen atom
+    
+    <answer>2</answer>
+    
+    Therefore, there are 2 carbon atoms in this molecule.
+    """
+    assert _norm_tagged(response1) == "2"
+    
+    # Response with reasoning and period
+    response2 = """
+    The IUPAC name for this compound can be determined by:
+    1. Identifying the longest carbon chain
+    2. Numbering the chain
+    3. Naming substituents
+    
+    <answer>ethanol.</answer>
+    """
+    assert _norm_tagged(response2) == "ethanol"
+    
+    # Response with complex chemical answer
+    response3 = """
+    The molecular formula is derived from the structure:
+    <answer>C6H12O6</answer>
+    This represents glucose.
+    """
+    assert _norm_tagged(response3) == "C6H12O6"
+
 
 def test_process_single_qa_integration():
     """Test that process_single_qa correctly uses EOS tokens from tokenizer."""

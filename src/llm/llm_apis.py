@@ -884,6 +884,32 @@ def _norm(s: str, tokenizer: Any = None) -> str:
     return result.rstrip('.')
 
 
+def _norm_tagged(s: str, tokenizer: Any = None) -> str:
+    """
+    Normalize prediction/label strings for exact-match comparison.
+    Extracts the answer between <answer> and </answer> tags.
+    If no tags found, returns the original string stripped.
+
+    :param s: Input string.
+    :param tokenizer: Tokenizer instance (unused, kept for compatibility).
+    :return: Normalized string.
+    """
+    import re
+    
+    # Look for content between <answer> and </answer> tags
+    match = re.search(r'<answer>(.*?)</answer>', s, re.DOTALL)
+    if match:
+        # Extract the content between tags and strip whitespace
+        answer_content = match.group(1).strip()
+        # Remove trailing period if present
+        if answer_content.endswith('.'):
+            answer_content = answer_content[:-1].strip()
+        return answer_content
+    
+    # If no tags found, return the original string stripped
+    return s.strip()
+
+
 def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
     """
     Compute metrics closure.
@@ -922,8 +948,8 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             filtered_labels = [filter_out_of_range(seq, tokenizer.vocab_size, tokenizer.pad_token_id) for seq in labels]
             decoded_preds = tokenizer.batch_decode(filtered_preds, skip_special_tokens=True)
             decoded_labels = tokenizer.batch_decode(filtered_labels, skip_special_tokens=True)
-            decoded_preds = [_norm(p, tokenizer) for p in decoded_preds]
-            decoded_labels = [_norm(label, tokenizer) for label in decoded_labels]
+            decoded_preds = [_norm_tagged(p, tokenizer) for p in decoded_preds]
+            decoded_labels = [_norm_tagged(label, tokenizer) for label in decoded_labels]
             all_preds.extend(decoded_preds)
             all_labels.extend(decoded_labels)
         except OverflowError:
