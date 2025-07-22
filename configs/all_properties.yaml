@@ -1,5 +1,5 @@
 # Configuration for the comprehensive all-properties question
-system_prompt: ""
+system_prompt: "Answer with numbers wrapped in <answer> tags. Do not explain. "
 
 question_set: all_properties
 

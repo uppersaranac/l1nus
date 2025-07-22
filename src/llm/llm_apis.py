@@ -675,7 +675,7 @@ def process_single_qa(
                 {"role": "user", "content": example["question_template"].format(**example['metadata'])},
                 {"role": "assistant", "content": example["assistant_template"].format(**example['metadata']) + eos_token}
             ]
-            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False)
+            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False, enable_thinking=False)
         else:
             # Fallback for models without chat templates
             system = system_prompt_override if system_prompt_override is not None else example["system_prompt"]

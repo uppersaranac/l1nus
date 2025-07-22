@@ -1,5 +1,5 @@
 # Configuration for molecular property counting questions
-system_prompt: "Please choose the best answer."
+system_prompt: "Please choose the best answer and wrap it in <answer> tags. Do not explain. "
 
 question_set: structure
 

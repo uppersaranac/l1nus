@@ -1,5 +1,5 @@
 # Configuration for molecular property counting questions
-system_prompt: ""
+system_prompt: "Answer with only a number wrapped in <answer> tags. Do not explain. "
 
 question_set: molecular_properties
 
