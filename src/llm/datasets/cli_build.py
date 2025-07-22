@@ -36,7 +36,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--max-length", type=int, default=1024, help="Max prompt length")
     p.add_argument("--max-label-len", type=int, default=512, help="Max label length for answers. (only used for eval as label is generated separately)")
     p.add_argument("--num-proc", type=int, default=None, help="Parallelism for .map()")
-    p.add_argument("--limit", type=int, default=None, help="Optionally limit number of raw records for quick runs")
+    p.add_argument("--limit", type=int, default=None, help="Randomly selects this many records from the dataset.")
     return p.parse_args()
 
 
@@ -50,8 +50,8 @@ def main() -> None:
 
     ds = load_questions_jsonl(q_path)
     if args.limit is not None:
-        logger.info("Limiting dataset to %d records", args.limit)
-        ds = ds.select(range(args.limit))
+        logger.info("Randomly selecting %d records from %d total records", args.limit, len(ds))
+        ds = ds.shuffle(seed=42).select(range(min(args.limit, len(ds))))
     if "split" in ds.column_names:
         split_ds = split_by_column(ds)
     else:
