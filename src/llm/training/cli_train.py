@@ -20,9 +20,9 @@ from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    default_data_collator,
-    get_scheduler,
 )
+from transformers.data.data_collator import default_data_collator
+from transformers.optimization import get_scheduler
 import torch
 
 logging.basicConfig(level=logging.INFO)
@@ -112,13 +112,13 @@ def main() -> None:
     # ---------------- dataloaders ----------------
 
     train_loader = DataLoader(
-        train_dataset,
+        train_dataset,  # type: ignore[arg-type]
         shuffle=True,
         batch_size=args.per_device_train_batch_size,
         collate_fn=default_data_collator,
     )
     eval_loader = DataLoader(
-        eval_dataset,
+        eval_dataset,  # type: ignore[arg-type]
         shuffle=False,
         batch_size=args.per_device_eval_batch_size,
         collate_fn=default_data_collator,

@@ -2,8 +2,8 @@ import os
 import atexit
 from pathlib import Path
 import shutil
-import transformers 
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.pipelines import pipeline
 import argparse
 import torch
 
@@ -13,6 +13,11 @@ parser = argparse.ArgumentParser(description="Run LLM chatbot")
 parser.add_argument("--model_name_or_path", type=str, default="Qwen/Qwen3-1.7B", help="Local path or Hub model name (default: Qwen/Qwen3-1.7B)")
 parser.add_argument("--disable_thinking", action="store_true", help="Disable model thinking mode (only works with models that support it like Qwen3)")
 parser.add_argument("--no_history", action="store_true", help="Disable conversation history (treat each question independently)")
+parser.add_argument("--max_new_tokens", type=int, default=1024, help="Maximum number of new tokens to generate")
+parser.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty for generation")
+parser.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
+parser.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
+parser.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
 args = parser.parse_args()
 
 model = AutoModelForCausalLM.from_pretrained(
@@ -21,7 +26,7 @@ model = AutoModelForCausalLM.from_pretrained(
 )
 tokenizer = AutoTokenizer.from_pretrained(str(Path(args.model_name_or_path).expanduser()))
 
-pipeline = transformers.pipeline(
+pipe = pipeline(
     "text-generation",
     model=model,
     tokenizer=tokenizer,
@@ -66,7 +71,11 @@ def interact_with_chatbot(user_input, conversation_history):
         # Generate response
         generated_ids = model.generate(
             **model_inputs,
-            max_new_tokens=1024
+            max_new_tokens=args.max_new_tokens,
+            repetition_penalty=args.repetition_penalty,
+            temperature=args.temperature,
+            do_sample=args.do_sample,
+            top_p=args.top_p
         )
         output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
         
@@ -93,9 +102,16 @@ def interact_with_chatbot(user_input, conversation_history):
             print("Model thinking process:", thinking_content)
     else:
         # Fallback to standard pipeline for models that don't support enable_thinking
-        outputs = pipeline(messages, max_new_tokens=1024)
-        print(messages)
-        response_text = outputs[0]["generated_text"][-1]
+        outputs = pipe(
+            messages,
+            max_new_tokens=args.max_new_tokens,
+            repetition_penalty=args.repetition_penalty,
+            temperature=args.temperature,
+            do_sample=args.do_sample,
+            top_p=args.top_p,
+            return_full_text=False,
+        )
+        response_text = outputs[0]["generated_text"] # type: ignore[arg-type]
         print("using fallback generation")
     
     return response_text
@@ -138,4 +154,4 @@ while True:
     
     # Step 5.3: Generate and print the chatbot's response
     response = interact_with_chatbot(user_input, conversation_history)
-    print(f"Chatbot: {response}") 
+    print(f"Chatbot: {response}")

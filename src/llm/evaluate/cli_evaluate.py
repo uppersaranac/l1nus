@@ -10,10 +10,11 @@ import csv
 from pathlib import Path
 
 from accelerate import Accelerator
-from datasets import load_from_disk
+from datasets import DatasetDict, load_from_disk
 from llm.llm_apis import compute_metrics_closure, do_evaluate, do_generation
 from torch.utils.data import DataLoader
-from transformers import AutoModelForCausalLM, AutoTokenizer, default_data_collator
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.data.data_collator import default_data_collator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +43,10 @@ def main() -> None:
 
     # Load dataset
     ds = load_from_disk(args.dataset_dir)
+    # Add a type check to ensure we have a DatasetDict
+    if not isinstance(ds, DatasetDict):
+        raise TypeError(f"Expected a DatasetDict from {args.dataset_dir}, but got {type(ds)}")
+    
     split = args.split
     if split == "val":
         split = "valid"
@@ -62,7 +67,10 @@ def main() -> None:
     model = accelerator.prepare(model)
 
     # default_data_collator casts data to pytorch tensors
-    dataloader = DataLoader(dataset, batch_size=args.per_device_eval_batch_size, shuffle=False, collate_fn=default_data_collator)
+    dataloader = DataLoader(dataset,   # type: ignore[arg-type]
+                            batch_size=args.per_device_eval_batch_size, 
+                            shuffle=False, 
+                            collate_fn=default_data_collator)
     # prepare dataloader for distributed training, including moving data to device
     dataloader = accelerator.prepare(dataloader)
 
@@ -99,7 +107,7 @@ def main() -> None:
         top_p=args.top_p
     )
     dataset.set_format(type="torch", columns=["labels"])
-    labels_tensor = dataset["labels"].masked_fill(dataset["labels"] == -100, tokenizer.pad_token_id)
+    labels_tensor = dataset["labels"].masked_fill(dataset["labels"] == -100, tokenizer.pad_token_id) # type: ignore[arg-type]
     gold = tokenizer.batch_decode(labels_tensor, skip_special_tokens=True)
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
