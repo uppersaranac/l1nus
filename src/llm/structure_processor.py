@@ -6,7 +6,7 @@ by `configs/structure.yaml`. See that YAML file for template details.
 """
 from __future__ import annotations
 
-from typing import Dict, Sequence, List
+from typing import Dict, Any, List
 import random
 
 import pyarrow as pa
@@ -52,7 +52,7 @@ class StructureProcessor(QuestionSetProcessor):
     # ---------------------------------------------------------------------
     # Main public API
     # ---------------------------------------------------------------------
-    def prepare_answers(self, table: pa.Table) -> tuple[Dict[str, Sequence[str]], list[bool]]:
+    def prepare_answers(self, table: pa.Table) -> tuple[dict[str, list[Any]], list[bool]]:
         smiles_col: List[str] = table.column("smiles").to_pylist()
         n = len(smiles_col)
 
