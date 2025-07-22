@@ -10,7 +10,7 @@ import torch
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Run LLM chatbot")
-parser.add_argument("--model_name_or_path", type=str, default="Qwen/Qwen3-1.7B", help="Local path or Hub model name (default: Qwen/Qwen3-1.7B)")
+parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B", help="Local path or Hub model name (default: Qwen/Qwen3-1.7B)")
 parser.add_argument("--disable_thinking", action="store_true", help="Disable model thinking mode (only works with models that support it like Qwen3)")
 parser.add_argument("--no_history", action="store_true", help="Disable conversation history (treat each question independently)")
 parser.add_argument("--max_new_tokens", type=int, default=1024, help="Maximum number of new tokens to generate")
