@@ -636,6 +636,7 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
 
     return properties
 
+
 def process_single_qa(
     tok: Any,
     example: Dict[str, Any],
@@ -643,6 +644,9 @@ def process_single_qa(
     max_label_len: int | None = None,
     is_train: bool = True,
     system_prompt_override: str | None = None,
+    create_position_weights: bool = False,
+    default_weight: float = 1.0,
+    answer_weight: float = 10.0,
 ) -> Dict[str, Any]:
     """
     Process a single question-answer pair from the expanded dataset.
@@ -659,7 +663,13 @@ def process_single_qa(
     :type is_train: bool
     :param system_prompt_override: Optional system prompt string. If provided, this is used instead of ``example['system_prompt']`` (which may be absent when loading datasets created without the system_prompt column).
     :type system_prompt_override: str or None
-    :return: Dictionary with tokenized input_ids, attention_mask, and labels
+    :param create_position_weights: Whether to create position weights based on answer tags
+    :type create_position_weights: bool
+    :param default_weight: Weight for positions outside answer tags
+    :type default_weight: float
+    :param answer_weight: Weight for positions inside answer tags
+    :type answer_weight: float
+    :return: Dictionary with tokenized input_ids, attention_mask, labels, and optionally position_weights
     :rtype: Dict[str, Any]
     """
     # Get the EOS token from the tokenizer
@@ -725,6 +735,25 @@ def process_single_qa(
         else:
             print(f"Warning: Answer not found in input_ids for example with answer {answer_text}")
         processed_example["labels"] = label  # Assign 1D list directly
+        
+        # Add position weights if requested
+        if create_position_weights:
+            position_weights = [default_weight] * len(input_ids_list)
+            
+            # Find positions within <answer> tags in the answer text
+            import re
+            for match in re.finditer(r'<answer>(.*?)</answer>', answer_text, re.DOTALL):
+                tagged_content = match.group(1)  # Content inside the tags
+                
+                # Use the existing find_answer_token_positions function
+                tag_token_span = find_answer_token_positions(tok, prompt_str, tagged_content, input_ids_list, max_len)
+                if tag_token_span is not None:
+                    tag_start_idx, tag_end_idx = tag_token_span
+                    for k in range(tag_start_idx, tag_end_idx):
+                        if k < len(position_weights):
+                            position_weights[k] = answer_weight
+            
+            processed_example["position_weights"] = position_weights
     else:
         # For evaluation: right-align answer tokens. right aligned is conventionally used
         # for answers as sometimes an answer can have a -100 in the middle of it, so when

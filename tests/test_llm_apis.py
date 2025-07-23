@@ -16,8 +16,7 @@ from llm.llm_apis import (
     count_fused_rings, count_aromatic_heterocycles, count_aromatic_carbocycles,
     count_saturated_heterocycles, count_saturated_carbocycles, count_aliphatic_heterocycles, count_aliphatic_carbocycles,
     calculate_molecular_properties,
-    QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor,
-
+    QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor
 )
 
 def test_count_element_atoms():
@@ -605,3 +604,98 @@ def test_do_generation_mock(tokenizer):
     assert all(isinstance(p, str) for p in preds)
 
     model.generate.assert_called_once()
+
+
+def test_find_answer_tag_spans():
+    """Test the regex pattern for finding answer tag spans directly."""
+    import re
+    
+    # Simple case
+    text = "The compound has <answer>3</answer> carbon atoms."
+    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
+    assert len(matches) == 1
+    assert matches[0].group(1) == "3"
+    
+    # Multiple tags
+    text = "It has <answer>3</answer> carbons and <answer>2</answer> oxygens."
+    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
+    assert len(matches) == 2
+    assert matches[0].group(1) == "3"
+    assert matches[1].group(1) == "2"
+    
+    # No tags
+    text = "The compound has 3 carbon atoms."
+    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
+    assert len(matches) == 0
+    
+    # Multiline content
+    text = "The answer is <answer>benzene\nwith 6 carbons</answer>."
+    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
+    assert len(matches) == 1
+    assert matches[0].group(1) == "benzene\nwith 6 carbons"
+
+
+def test_process_single_qa_position_weights():
+    """Test position weights functionality in process_single_qa."""
+    from llm.llm_apis import process_single_qa
+    
+    # Create a mock tokenizer
+    tokenizer = MagicMock()
+    tokenizer.eos_token = "</s>"
+    tokenizer.apply_chat_template = MagicMock(return_value="system: Test\nuser: Question\nassistant: The answer is <answer>3</answer></s>")
+    
+    # Mock tokenization
+    def mock_tokenize(text, **kwargs):
+        # Simplified tokenization for testing
+        tokens = text.split()
+        input_ids = list(range(len(tokens)))
+        return {"input_ids": [input_ids], "attention_mask": [[1] * len(tokens)]}
+    
+    tokenizer.__call__ = mock_tokenize
+    
+    example = {
+        "system_prompt": "Test system",
+        "question_template": "How many carbon atoms?",
+        "assistant_template": "The answer is <answer>{carbon_count}</answer>",
+        "metadata": {"carbon_count": "3"}
+    }
+    
+    # Test with position weights enabled
+    result = process_single_qa(
+        tok=tokenizer,
+        example=example,
+        max_len=20,
+        is_train=True,
+        create_position_weights=True,
+        default_weight=1.0,
+        answer_weight=2.0
+    )
+    
+    # Should have position_weights in the result
+    assert "position_weights" in result
+    assert isinstance(result["position_weights"], list)
+    assert len(result["position_weights"]) == len(result["input_ids"])
+    
+    # Test with position weights disabled
+    result_no_weights = process_single_qa(
+        tok=tokenizer,
+        example=example,
+        max_len=20,
+        is_train=True,
+        create_position_weights=False
+    )
+    
+    # Should not have position_weights
+    assert "position_weights" not in result_no_weights
+    
+    # Test evaluation mode (should not have position weights even if requested)
+    result_eval = process_single_qa(
+        tok=tokenizer,
+        example=example,
+        max_len=20,
+        is_train=False,
+        create_position_weights=True
+    )
+    
+    # Should not have position_weights in eval mode
+    assert "position_weights" not in result_eval

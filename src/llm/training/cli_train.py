@@ -66,6 +66,10 @@ def _parse_args() -> argparse.Namespace:
                    help="Learning rate scheduler type (default: cosine)")
     p.add_argument("--warmup_ratio", type=float, default=0.1, 
                    help="Warmup ratio (fraction of total steps) for warmup schedulers (default: 0.1)")
+    p.add_argument("--use_position_weighting", action="store_true", 
+                   help="Enable position-wise loss weighting from dataset")
+    p.add_argument("--weight_column", type=str, default="position_weights", 
+                   help="Name of the column containing position weights in the dataset (default: position_weights)")
     return p.parse_args()
 
 
@@ -116,6 +120,21 @@ def main() -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
 
     # ---------------- dataloaders ----------------
+
+    # Configure dataset format and columns based on whether position weighting is enabled
+    if args.use_position_weighting:
+        # Verify that the weight column exists in the dataset
+        if args.weight_column not in train_dataset.column_names:
+            raise ValueError(f"Weight column '{args.weight_column}' not found in dataset. "
+                           f"Available columns: {train_dataset.column_names}")
+        
+        # Set format to include weight column along with standard columns
+        train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels", args.weight_column])
+        eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels", args.weight_column])
+    else:
+        # Standard format with only the required columns
+        train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
+        eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
 
     train_loader = DataLoader(
         train_dataset,  # type: ignore[arg-type]
@@ -174,6 +193,10 @@ def main() -> None:
                    args.lr_scheduler_type, 
                    num_warmup_steps, 
                    num_train_steps)
+        if args.use_position_weighting:
+            logger.info("Using position-wise loss weighting from dataset column: %s", args.weight_column)
+        else:
+            logger.info("Using standard uniform loss weighting")
 
     # Metric helper (exact-match) ------------------------------------
     compute_metrics = compute_metrics_closure(tokenizer)
@@ -189,12 +212,51 @@ def main() -> None:
         last_loss = None
         for batch in train_iter:
             with accelerator.accumulate(model):
-                outputs = model(
-                    input_ids=batch["input_ids"],
-                    attention_mask=batch["attention_mask"],
-                    labels=batch["labels"],
-                )
-                loss = outputs.loss
+                if args.use_position_weighting and args.weight_column in batch:
+                    # Use position weights from dataset
+                    position_weights = batch[args.weight_column]
+                    
+                    # Get logits without computing loss
+                    outputs = model(
+                        input_ids=batch["input_ids"],
+                        attention_mask=batch["attention_mask"],
+                    )
+                    
+                    # Compute weighted loss manually
+                    logits = outputs.logits
+                    labels = batch["labels"]
+                    
+                    # Shift logits and labels for causal LM
+                    shift_logits = logits[..., :-1, :].contiguous()
+                    shift_labels = labels[..., 1:].contiguous()
+                    shift_weights = position_weights[..., 1:].contiguous()
+                    
+                    # Flatten for loss computation
+                    shift_logits = shift_logits.view(-1, shift_logits.size(-1))
+                    shift_labels = shift_labels.view(-1)
+                    shift_weights = shift_weights.view(-1)
+                    
+                    # Compute cross entropy loss without reduction
+                    loss_fct = torch.nn.CrossEntropyLoss(reduction='none')
+                    losses = loss_fct(shift_logits, shift_labels)
+                    
+                    # Apply position weights and reduce
+                    weighted_losses = losses * shift_weights
+                    # Only average over non-masked tokens
+                    valid_tokens = (shift_labels != -100)
+                    if valid_tokens.sum() > 0:
+                        loss = weighted_losses[valid_tokens].mean()
+                    else:
+                        loss = weighted_losses.mean()
+                else:
+                    # Standard loss computation
+                    outputs = model(
+                        input_ids=batch["input_ids"],
+                        attention_mask=batch["attention_mask"],
+                        labels=batch["labels"],
+                    )
+                    loss = outputs.loss
+                
                 accelerator.backward(loss)
 
                 optimizer.step()
