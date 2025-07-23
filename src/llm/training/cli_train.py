@@ -61,6 +61,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
     p.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
     p.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
+    p.add_argument("--lr_scheduler_type", type=str, default="cosine", 
+                   choices=["linear", "linear_with_warmup", "cosine"], 
+                   help="Learning rate scheduler type (default: cosine)")
+    p.add_argument("--warmup_ratio", type=float, default=0.1, 
+                   help="Warmup ratio (fraction of total steps) for warmup schedulers (default: 0.1)")
     return p.parse_args()
 
 
@@ -133,12 +138,42 @@ def main() -> None:
     num_update_steps_per_epoch = math.ceil(len(train_loader) / args.gradient_accumulation_steps)
     num_train_steps = args.num_train_epochs * num_update_steps_per_epoch
 
-    lr_scheduler = get_scheduler(
-        "linear",
-        optimizer=optimizer,
-        num_warmup_steps=0,
-        num_training_steps=num_train_steps,
-    )
+    # Configure learning rate scheduler based on command line option
+    if args.lr_scheduler_type == "linear":
+        # Original linear scheduler with no warmup
+        num_warmup_steps = 0
+        lr_scheduler = get_scheduler(
+            "linear",
+            optimizer=optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_train_steps,
+        )
+    elif args.lr_scheduler_type == "linear_with_warmup":
+        # Linear scheduler with warmup
+        num_warmup_steps = int(args.warmup_ratio * num_train_steps)
+        lr_scheduler = get_scheduler(
+            "linear",
+            optimizer=optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_train_steps,
+        )
+    elif args.lr_scheduler_type == "cosine":
+        # Cosine annealing with warmup (default)
+        num_warmup_steps = int(args.warmup_ratio * num_train_steps)
+        lr_scheduler = get_scheduler(
+            "cosine",
+            optimizer=optimizer,
+            num_warmup_steps=num_warmup_steps,
+            num_training_steps=num_train_steps,
+        )
+    else:
+        raise ValueError(f"Unknown scheduler type: {args.lr_scheduler_type}")
+
+    if accelerator.is_main_process:
+        logger.info("Using %s scheduler with %d warmup steps out of %d total steps", 
+                   args.lr_scheduler_type, 
+                   num_warmup_steps, 
+                   num_train_steps)
 
     # Metric helper (exact-match) ------------------------------------
     compute_metrics = compute_metrics_closure(tokenizer)
