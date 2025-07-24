@@ -38,8 +38,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--num-proc", type=int, default=None, help="Parallelism for .map()")
     p.add_argument("--limit", type=int, default=None, help="Randomly selects this many records from the dataset.")
     p.add_argument("--create-position-weights", action="store_true", help="Create position weights based on <answer> tags in training data")
-    p.add_argument("--default-weight", type=float, default=1.0, help="Weight for positions outside answer tags (default: 1.0)")
-    p.add_argument("--answer-weight", type=float, default=10.0, help="Weight for positions inside answer tags (default: 2.0)")
+    p.add_argument("--default-weight", type=float, default=0.5, help="Weight for positions outside answer tags (default: 1.0)")
+    p.add_argument("--answer-weight", type=float, default=5.0, help="Weight for positions inside answer tags (default: 2.0)")
     return p.parse_args()
 
 
