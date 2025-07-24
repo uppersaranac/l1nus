@@ -34,7 +34,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--output", required=True, help="Output directory to write dataset files (saved as HF Arrow)")
     p.add_argument("--config", required=True, help="YAML file describing question templates and system_prompt")
     p.add_argument("--max-length", type=int, default=1024, help="Max prompt length")
-    p.add_argument("--max-label-len", type=int, default=512, help="Max label length for answers. (only used for eval as label is generated separately)")
+    p.add_argument("--max-label-len", type=int, default=512, help="Max label length for answers. (only used for eval lable not train label)")
     p.add_argument("--num-proc", type=int, default=None, help="Parallelism for .map()")
     p.add_argument("--limit", type=int, default=None, help="Randomly selects this many records from the dataset.")
     p.add_argument("--create-position-weights", action="store_true", help="Create position weights based on <answer> tags in training data")

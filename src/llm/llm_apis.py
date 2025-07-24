@@ -657,7 +657,7 @@ def process_single_qa(
     :type example: Dict[str, Any]
     :param max_len: Maximum length for the input
     :type max_len: int
-    :param max_label_len: Maximum length for the label (only used for eval as lable is generated separately)
+    :param max_label_len: Maximum length for the label (only used for eval lable not train label)
     :type max_label_len: int or None
     :param is_train: Whether this is for training or evaluation
     :type is_train: bool
@@ -685,7 +685,9 @@ def process_single_qa(
                 {"role": "user", "content": example["question_template"].format(**example['metadata'])},
                 {"role": "assistant", "content": example["assistant_template"].format(**example['metadata']) + eos_token}
             ]
-            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=True, tokenize=False, enable_thinking=False)
+            # generation prompt is an extra assistant prompt added to the end of the prompt to get the model to generate an answer
+            # it's not needed for training
+            prompt_str = tok.apply_chat_template(prompt, add_generation_prompt=False, tokenize=False, enable_thinking=False)
         else:
             # Fallback for models without chat templates
             system = system_prompt_override if system_prompt_override is not None else example["system_prompt"]
