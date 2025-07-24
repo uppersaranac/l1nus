@@ -1,5 +1,5 @@
 # Configuration for the IUPAC naming question generator
-system_prompt: "Answer with only a number wrapped in <answer> tags. Do not explain. "
+system_prompt: "Answer with a name wrapped in <answer> tags. Do not explain. "
 
 question_set: iupac_naming
 
