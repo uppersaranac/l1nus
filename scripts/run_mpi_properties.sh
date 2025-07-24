@@ -37,6 +37,7 @@ export ARGS="--limit 0 \
 --num_example_preds 16 \
 --dataset_dir ~/data/pubchem/arrow/pubchem_best_cluster_molecular_properties \
 --model_name Qwen/Qwen3-4B \
+--use_position_weighting \
 "
 
 export CMD="$LAUNCHER $SCRIPT $ARGS"
