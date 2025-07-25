@@ -130,11 +130,11 @@ def main() -> None:
         
         # Set format to include weight column along with standard columns
         train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels", args.weight_column])
-        eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels", args.weight_column])
     else:
         # Standard format with only the required columns
         train_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
-        eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
+
+    eval_dataset.set_format(type="torch", columns=["input_ids", "attention_mask", "labels"])
 
     train_loader = DataLoader(
         train_dataset,  # type: ignore[arg-type]
