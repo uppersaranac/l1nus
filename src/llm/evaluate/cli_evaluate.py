@@ -11,10 +11,11 @@ from pathlib import Path
 
 from accelerate import Accelerator
 from datasets import DatasetDict, load_from_disk
-from llm.llm_apis import compute_metrics_closure, do_evaluate, do_generation
+from llm.llm_apis import compute_metrics_closure, do_evaluate, do_generation, _norm_tagged
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.data.data_collator import default_data_collator
+from collections import defaultdict
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +34,88 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
     parser.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
     return parser.parse_args()
+
+def analyze_predictions_by_question_id(question_ids: list, gold_labels: list[str], predictions: list[str], tokenizer) -> None:
+    """
+    Analyze predictions by question_id, breaking down by whether gold answer is 0 or not.
+    
+    :param question_ids: List of question IDs for each example
+    :param gold_labels: List of gold label strings
+    :param predictions: List of prediction strings 
+    :param tokenizer: Tokenizer instance (for compatibility with _norm_tagged)
+    """
+    # Group data by question_id
+    question_data = defaultdict(list)
+    
+    for qid, gold, pred in zip(question_ids, gold_labels, predictions):
+        question_data[qid].append({
+            'gold': gold,
+            'pred': pred
+        })
+    
+    # Analyze each question_id
+    zero_answer_stats = {'total': 0, 'correct': 0}
+    non_zero_answer_stats = {'total': 0, 'correct': 0}
+    
+    logger.info(f"Found {len(question_data)} unique question_ids")
+    
+    for qid, examples in question_data.items():
+        logger.info(f"\nQuestion ID: {qid}")
+        logger.info(f"Number of examples: {len(examples)}")
+        
+        # Extract normalized answers using _norm_tagged
+        for i, example in enumerate(examples):
+            gold_answer = _norm_tagged(example['gold'], tokenizer)
+            pred_answer = _norm_tagged(example['pred'], tokenizer)
+            
+            logger.info(f"  Example {i+1}:")
+            logger.info(f"    Gold: '{gold_answer}'")
+            logger.info(f"    Pred: '{pred_answer}'")
+            
+            is_correct = gold_answer == pred_answer
+            logger.info(f"    Correct: {is_correct}")
+            
+            # Categorize by whether gold answer is 0 or not
+            if gold_answer == "0":
+                zero_answer_stats['total'] += 1
+                if is_correct:
+                    zero_answer_stats['correct'] += 1
+            else:
+                non_zero_answer_stats['total'] += 1
+                if is_correct:
+                    non_zero_answer_stats['correct'] += 1
+    
+    # Print summary statistics
+    logger.info("\n" + "="*50)
+    logger.info("SUMMARY STATISTICS BY ANSWER TYPE")
+    logger.info("="*50)
+    
+    if zero_answer_stats['total'] > 0:
+        zero_accuracy = zero_answer_stats['correct'] / zero_answer_stats['total']
+        logger.info("Gold answer = '0':")
+        logger.info(f"  Total examples: {zero_answer_stats['total']}")
+        logger.info(f"  Correct predictions: {zero_answer_stats['correct']}")
+        logger.info(f"  Accuracy: {zero_accuracy:.3f}")
+    else:
+        logger.info("Gold answer = '0': No examples found")
+    
+    if non_zero_answer_stats['total'] > 0:
+        non_zero_accuracy = non_zero_answer_stats['correct'] / non_zero_answer_stats['total']
+        logger.info("Gold answer != '0':")
+        logger.info(f"  Total examples: {non_zero_answer_stats['total']}")
+        logger.info(f"  Correct predictions: {non_zero_answer_stats['correct']}")
+        logger.info(f"  Accuracy: {non_zero_accuracy:.3f}")
+    else:
+        logger.info("Gold answer != '0': No examples found")
+    
+    total_examples = zero_answer_stats['total'] + non_zero_answer_stats['total']
+    total_correct = zero_answer_stats['correct'] + non_zero_answer_stats['correct']
+    if total_examples > 0:
+        overall_accuracy = total_correct / total_examples
+        logger.info("Overall:")
+        logger.info(f"  Total examples: {total_examples}")
+        logger.info(f"  Correct predictions: {total_correct}")
+        logger.info(f"  Accuracy: {overall_accuracy:.3f}")
 
 def main() -> None:
     args = parse_args()
@@ -53,12 +136,19 @@ def main() -> None:
     if split not in ds:
         raise ValueError(f"Split '{split}' not found in dataset at {args.dataset_dir}")
     dataset = ds[split]
+    
+    # Store the original question_id for analysis
+    original_question_ids = dataset["question_id"] if "question_id" in dataset.column_names else None
+    
     # Keep only the required columns for evaluation so that default_data_collator works
     columns_to_keep = ["input_ids", "attention_mask", "labels"]
     columns_to_remove = [col for col in dataset.column_names if col not in columns_to_keep]
     dataset = dataset.remove_columns(columns_to_remove)
     if args.limit is not None:
-        dataset = dataset.shuffle(seed=42).select(range(min(args.limit, len(dataset))))
+        dataset = dataset.select(range(min(args.limit, len(dataset))))
+        # Also limit the question_ids if they exist
+        if original_question_ids is not None:
+            original_question_ids = original_question_ids[:min(args.limit, len(original_question_ids))]
     logger.info(f"Loaded {len(dataset)} examples from split '{split}'")
 
     # Load model and tokenizer
@@ -115,6 +205,13 @@ def main() -> None:
         for i, (g, p) in enumerate(zip(gold, preds)):
             writer.writerow([i, g, p])
     logger.info("CSV file written.")
+    
+    # Analyze predictions by question_id if available
+    if original_question_ids is not None:
+        logger.info("Analyzing predictions by question_id...")
+        analyze_predictions_by_question_id(original_question_ids, gold, preds, tokenizer)
+    else:
+        logger.warning("question_id column not found in dataset - skipping question_id analysis")
 
 if __name__ == "__main__":
     main()
