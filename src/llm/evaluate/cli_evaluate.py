@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
     return parser.parse_args()
 
-def analyze_predictions_by_question_id(question_ids: list, gold_labels: list[str], predictions: list[str], tokenizer) -> None:
+def analyze_predictions_by_question_id(question_ids: list, gold_labels: list[str], predictions: list[str], tokenizer, show_examples: bool = False) -> None:
     """
     Analyze predictions by question_id, breaking down by whether gold answer is 0 or not.
     
@@ -42,6 +42,7 @@ def analyze_predictions_by_question_id(question_ids: list, gold_labels: list[str
     :param gold_labels: List of gold label strings
     :param predictions: List of prediction strings 
     :param tokenizer: Tokenizer instance (for compatibility with _norm_tagged)
+    :param show_examples: Whether to show individual examples (default: False)
     """
     # Group data by question_id
     question_data = defaultdict(list)
@@ -59,30 +60,56 @@ def analyze_predictions_by_question_id(question_ids: list, gold_labels: list[str
     logger.info(f"Found {len(question_data)} unique question_ids")
     
     for qid, examples in question_data.items():
+        qid_correct = 0
+        qid_total = len(examples)
+        qid_zero_correct = 0
+        qid_zero_total = 0
+        qid_non_zero_correct = 0
+        qid_non_zero_total = 0
+        
         logger.info(f"\nQuestion ID: {qid}")
-        logger.info(f"Number of examples: {len(examples)}")
         
         # Extract normalized answers using _norm_tagged
         for i, example in enumerate(examples):
             gold_answer = _norm_tagged(example['gold'], tokenizer)
             pred_answer = _norm_tagged(example['pred'], tokenizer)
             
-            logger.info(f"  Example {i+1}:")
-            logger.info(f"    Gold: '{gold_answer}'")
-            logger.info(f"    Pred: '{pred_answer}'")
-            
             is_correct = gold_answer == pred_answer
-            logger.info(f"    Correct: {is_correct}")
+            qid_correct += is_correct
             
             # Categorize by whether gold answer is 0 or not
             if gold_answer == "0":
                 zero_answer_stats['total'] += 1
+                qid_zero_total += 1
                 if is_correct:
                     zero_answer_stats['correct'] += 1
+                    qid_zero_correct += 1
             else:
                 non_zero_answer_stats['total'] += 1
+                qid_non_zero_total += 1
                 if is_correct:
                     non_zero_answer_stats['correct'] += 1
+                    qid_non_zero_correct += 1
+            
+            if show_examples:
+                logger.info(f"  Example {i+1}:")
+                logger.info(f"    Gold: '{gold_answer}'")
+                logger.info(f"    Pred: '{pred_answer}'")
+                logger.info(f"    Correct: {is_correct}")
+        
+        # Print statistics for this question ID
+        qid_accuracy = qid_correct / qid_total if qid_total > 0 else 0
+        logger.info(f"  Total examples: {qid_total}")
+        logger.info(f"  Correct: {qid_correct}")
+        logger.info(f"  Accuracy: {qid_accuracy:.3f}")
+        
+        if qid_zero_total > 0:
+            qid_zero_accuracy = qid_zero_correct / qid_zero_total
+            logger.info(f"  Zero answers: {qid_zero_correct}/{qid_zero_total} ({qid_zero_accuracy:.3f})")
+        
+        if qid_non_zero_total > 0:
+            qid_non_zero_accuracy = qid_non_zero_correct / qid_non_zero_total
+            logger.info(f"  Non-zero answers: {qid_non_zero_correct}/{qid_non_zero_total} ({qid_non_zero_accuracy:.3f})")
     
     # Print summary statistics
     logger.info("\n" + "="*50)
@@ -208,7 +235,7 @@ def main() -> None:
     # Analyze predictions by question_id if available
     if original_question_ids is not None:
         logger.info("Analyzing predictions by question_id...")
-        analyze_predictions_by_question_id(original_question_ids, gold, preds, tokenizer)
+        analyze_predictions_by_question_id(original_question_ids, gold, preds, tokenizer, show_examples=False)
     else:
         logger.warning("question_id column not found in dataset - skipping question_id analysis")
 

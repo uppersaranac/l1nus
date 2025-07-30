@@ -460,17 +460,19 @@ def _norm_tagged(s: str, tokenizer: Any = None) -> str:
     :param tokenizer: Tokenizer instance (unused, kept for compatibility).
     :return: Normalized string.
     """
-    import re
-    
-    # Look for content between <answer> and </answer> tags
-    match = re.search(r'<answer>(.*?)</answer>', s, re.DOTALL)
-    if match:
-        # Extract the content between tags and strip whitespace
-        answer_content = match.group(1).strip()
-        # Remove trailing period if present
-        if answer_content.endswith('.'):
-            answer_content = answer_content[:-1].strip()
-        return answer_content
+    # Find the last occurrence of <answer> tag
+    last_answer_start = s.rfind('<answer>')
+    if last_answer_start != -1:
+        # Find the corresponding </answer> tag after the last <answer>
+        answer_end = s.find('</answer>', last_answer_start)
+        if answer_end != -1:
+            # Extract content between the tags
+            start_pos = last_answer_start + len('<answer>')
+            answer_content = s[start_pos:answer_end].strip()
+            # Remove trailing period if present
+            if answer_content.endswith('.'):
+                answer_content = answer_content[:-1].strip()
+            return answer_content
     
     # If no tags found, return the original string stripped
     return s.strip()
