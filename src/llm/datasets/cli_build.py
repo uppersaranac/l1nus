@@ -8,7 +8,6 @@ Example:
         --tokenizer openai/gpt2 \
         --output data/chem_prop_ds
 """
-from __future__ import annotations
 
 import argparse
 import datasets

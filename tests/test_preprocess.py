@@ -1,5 +1,4 @@
 """Unit tests for dataset splitting and tokenisation helpers."""
-from __future__ import annotations
 
 import pytest
 from datasets import Dataset

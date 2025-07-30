@@ -8,7 +8,6 @@ Example:
         --config configs/qgen.yaml \
         --output questions.jsonl
 """
-from __future__ import annotations
 
 import argparse
 import logging

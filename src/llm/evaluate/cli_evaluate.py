@@ -2,7 +2,6 @@
 """
 CLI: Evaluate a trained causal-LM on a tokenised dataset and output metrics and predictions.
 """
-from __future__ import annotations
 
 import argparse
 import logging

@@ -8,6 +8,10 @@ from unittest.mock import MagicMock
 from transformers import AutoTokenizer
 from llm.llm_apis import (
     _norm, _norm_tagged, compute_metrics_closure, do_generation,
+    calculate_molecular_properties,
+    QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor
+)
+from llm.llm_mol import (
     count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
     count_element_atoms, count_carbon_atoms, count_nitrogen_atoms, count_oxygen_atoms, count_sulfur_atoms, count_phosphorus_atoms,
     count_chlorine_atoms, count_fluorine_atoms, count_rings, count_aromatic_rings, count_double_bonds, count_triple_bonds,
@@ -15,8 +19,6 @@ from llm.llm_apis import (
     count_six_membered_rings, count_aromatic_six_membered_rings, longest_chain_length, count_total_hydrogens,
     count_fused_rings, count_aromatic_heterocycles, count_aromatic_carbocycles,
     count_saturated_heterocycles, count_saturated_carbocycles, count_aliphatic_heterocycles, count_aliphatic_carbocycles,
-    calculate_molecular_properties,
-    QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor
 )
 
 def test_count_element_atoms():

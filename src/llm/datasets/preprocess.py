@@ -4,7 +4,6 @@ This module deliberately depends on the *existing* `llm_apis.process_single_qa`
 function so that tokenisation behaviour is identical to the original pipeline
 — this is crucial for regression-test parity.
 """
-from __future__ import annotations
 
 import logging
 from pathlib import Path

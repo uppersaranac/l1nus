@@ -5,7 +5,6 @@ This is a trimmed-down version of the original *train_llm.py* workflow that
 assumes tokenisation/expansion/splitting are already done.  It keeps the same
 metric and generation helpers via `llm_apis` to ensure regression parity.
 """
-from __future__ import annotations
 
 import argparse
 import logging

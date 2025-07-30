@@ -19,7 +19,6 @@ Usage::
     q_str = tmpl.render_question({"smiles": "CCO"})
     a_str = tmpl.render_answer({"answer": 3})
 """
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Dict

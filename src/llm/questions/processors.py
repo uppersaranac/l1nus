@@ -13,7 +13,6 @@ that was previously only available in `llm_apis`.
 In the future we could move these class definitions here entirely or load them
 via entry-points for true domain-agnostic plug-ins.
 """
-from __future__ import annotations
 
 from llm.llm_apis import (
     AllPropertiesProcessor,

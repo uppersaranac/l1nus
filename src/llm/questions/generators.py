@@ -6,7 +6,6 @@ records into one JSON-serialisable dict per question/answer pair.
 The behaviour is defined entirely by a YAML configuration file – see
 `cli_generate.py --help` for usage.
 """
-from __future__ import annotations
 
 import json
 import logging

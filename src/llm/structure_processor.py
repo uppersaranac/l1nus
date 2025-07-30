@@ -4,7 +4,6 @@ This module defines a `StructureProcessor` subclass of `QuestionSetProcessor`. I
 creates new answer columns (`smiles_A`–`smiles_D` and `isomer_answer`) required
 by `configs/structure.yaml`. See that YAML file for template details.
 """
-from __future__ import annotations
 
 from typing import Dict, Any, List
 import random
