@@ -175,9 +175,37 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
     
     if accelerator.is_main_process and all_accumulated_preds:
         try:
-            # Concatenate all accumulated predictions and labels
-            concat_preds = np.concatenate(all_accumulated_preds, axis=0)
-            concat_labels = np.concatenate(all_accumulated_labels, axis=0)
+            def left_pad_arrays(arrays: list[np.ndarray], pad_value: int) -> np.ndarray:
+                """
+                Left-pad arrays to the same length and concatenate them.
+                
+                :param arrays: List of numpy arrays to pad and concatenate.
+                :type arrays: list[np.ndarray]
+                :param pad_value: Value to use for padding.
+                :type pad_value: int
+                :return: Concatenated array with all sequences padded to the same length.
+                :rtype: np.ndarray
+                """
+                if not arrays:
+                    return np.array([])
+                
+                max_len = max(arr.shape[1] for arr in arrays)
+                padded_arrays = []
+                
+                for arr in arrays:
+                    if arr.shape[1] < max_len:
+                        pad_width = max_len - arr.shape[1]
+                        padded_arr = np.pad(arr, ((0, 0), (pad_width, 0)), 
+                                          mode='constant', constant_values=pad_value)
+                        padded_arrays.append(padded_arr)
+                    else:
+                        padded_arrays.append(arr)
+                
+                return np.concatenate(padded_arrays, axis=0)
+            
+            # Left-pad and concatenate predictions and labels
+            concat_preds = left_pad_arrays(all_accumulated_preds, tokenizer.pad_token_id)
+            concat_labels = left_pad_arrays(all_accumulated_labels, -100)
             
             # Filter out-of-range tokens and decode
             def filter_out_of_range(tokens, vocab_size, pad_token_id):
