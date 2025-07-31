@@ -9,6 +9,7 @@ metric and generation helpers via `llm_apis` to ensure regression parity.
 import argparse
 import logging
 import math
+import numpy as np
 from pathlib import Path
 from typing import cast
 
@@ -57,9 +58,10 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--no_tqdm", action="store_true", help="Disable tqdm progress bars.")
     p.add_argument("--limit", type=int, default=None, help="If set, truncate the training set to this many examples.")
     p.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty for generation")
-    p.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
-    p.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
-    p.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
+    p.add_argument("--temperature", type=float, default=1.0, help="Temperature for generation (only used with sampling, auto-enables do_sample if != 1.0)")
+    p.add_argument("--do_sample", action="store_false", help="Use sampling for generation (auto-enabled if temperature != 1.0 or top_p != 1.0 or top_k != 0)")
+    p.add_argument("--top_p", type=float, default=1.0, help="Top-p (nucleus) sampling threshold (only used with sampling, auto-enables do_sample if != 1.0)")
+    p.add_argument("--top_k", type=int, default=0, help="Top-k sampling threshold (only used with sampling, auto-enables do_sample if != 0)")
     p.add_argument("--lr_scheduler_type", type=str, default="cosine", 
                    choices=["linear", "linear_with_warmup", "cosine"], 
                    help="Learning rate scheduler type (default: cosine)")
@@ -102,8 +104,18 @@ def main() -> None:
 
     train_dataset = ds_min["train"]
     if args.limit is not None and args.limit > 0:
-        train_dataset = train_dataset.select(range(min(args.limit, len(train_dataset))))
-    eval_dataset = ds_min["valid"].shuffle(seed=42).select(range(min(args.eval_num_examples, len(ds_min["valid"]))))
+        rng = np.random.default_rng(seed=42)
+        indices = rng.choice(len(train_dataset), size=min(args.limit, len(train_dataset)), replace=False)
+        indices.sort()
+        train_dataset = train_dataset.select(indices)
+    if args.eval_num_examples is not None and args.eval_num_examples > 0:
+        eval_valid = ds_min["valid"]
+        rng_eval = np.random.default_rng(seed=42)
+        eval_indices = rng_eval.choice(len(eval_valid), size=min(args.eval_num_examples, len(eval_valid)), replace=False)
+        eval_indices.sort()
+        eval_dataset = eval_valid.select(eval_indices)
+    else:
+        eval_dataset = ds_min["valid"]
 
     # ---------------- model & optim ----------------
     model_name = Path(args.model_name).expanduser()
@@ -137,7 +149,7 @@ def main() -> None:
 
     train_loader = DataLoader(
         train_dataset,  # type: ignore[arg-type]
-        shuffle=True,
+        shuffle=False,
         batch_size=args.per_device_train_batch_size,
         collate_fn=default_data_collator,
     )
@@ -199,6 +211,12 @@ def main() -> None:
 
     # Metric helper (exact-match) ------------------------------------
     compute_metrics = compute_metrics_closure(tokenizer)
+    
+    # Auto-enable sampling if sampling parameters are provided
+    do_sample = args.do_sample
+    if not do_sample and (args.temperature != 1.0 or args.top_p != 1.0 or args.top_k != 0):
+        logger.info("Auto-enabling sampling because temperature, top_p, or top_k parameters were provided")
+        do_sample = True
 
     # ---------------- training loop ----------------
     global_step = 0
@@ -276,8 +294,9 @@ def main() -> None:
                     args.max_new_tokens, args.num_example_preds,
                     repetition_penalty=args.repetition_penalty,
                     temperature=args.temperature,
-                    do_sample=args.do_sample,
-                    top_p=args.top_p
+                    do_sample=do_sample,
+                    top_p=args.top_p,
+                    top_k=args.top_k
                 )
                 if not args.no_tqdm and hasattr(train_iter, 'set_postfix') and eval_metrics is not None:
                     metric_val = eval_metrics.get('exact_match', None)
@@ -297,8 +316,9 @@ def main() -> None:
             args.eval_num_examples,
             repetition_penalty=args.repetition_penalty,
             temperature=args.temperature,
-            do_sample=args.do_sample,
-            top_p=args.top_p
+            do_sample=do_sample,
+            top_p=args.top_p,
+            top_k=args.top_k
         )
         if not args.no_tqdm and 'train_iter' in locals() and hasattr(train_iter, 'set_postfix') and epoch_metrics is not None:
             metric_val = epoch_metrics.get('exact_match', None)

@@ -16,10 +16,17 @@ parser.add_argument("--no_history", action="store_true", help="Disable conversat
 parser.add_argument("--system_prompt", type=str, default=None, help="Custom system prompt to use for the conversation")
 parser.add_argument("--max_new_tokens", type=int, default=1024, help="Maximum number of new tokens to generate")
 parser.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty for generation")
-parser.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
-parser.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
-parser.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
+parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for generation (only used with sampling, auto-enables do_sample if != 1.0)")
+parser.add_argument("--do_sample", action="store_false", help="Use sampling for generation (auto-enabled if temperature != 1.0 or top_p != 1.0 or top_k != 0)")
+parser.add_argument("--top_p", type=float, default=1.0, help="Top-p (nucleus) sampling threshold (only used with sampling, auto-enables do_sample if != 1.0)")
+parser.add_argument("--top_k", type=int, default=0, help="Top-k sampling threshold (only used with sampling, auto-enables do_sample if != 0)")
 args = parser.parse_args()
+
+# Auto-enable sampling if sampling parameters are provided
+do_sample = args.do_sample
+if not do_sample and (args.temperature != 1.0 or args.top_p != 1.0 or args.top_k != 0):
+    print("Auto-enabling sampling because temperature, top_p, or top_k parameters were provided")
+    do_sample = True
 
 model = AutoModelForCausalLM.from_pretrained(
     str(Path(args.model_name).expanduser()),
@@ -85,8 +92,9 @@ def interact_with_chatbot(user_input, conversation_history):
             max_new_tokens=args.max_new_tokens,
             repetition_penalty=args.repetition_penalty,
             temperature=args.temperature,
-            do_sample=args.do_sample,
-            top_p=args.top_p
+            do_sample=do_sample,
+            top_p=args.top_p,
+            top_k=args.top_k
         )
         output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
         
@@ -118,8 +126,9 @@ def interact_with_chatbot(user_input, conversation_history):
             max_new_tokens=args.max_new_tokens,
             repetition_penalty=args.repetition_penalty,
             temperature=args.temperature,
-            do_sample=args.do_sample,
+            do_sample=do_sample,
             top_p=args.top_p,
+            top_k=args.top_k,
             return_full_text=False,
         )
         response_text = outputs[0]["generated_text"] # type: ignore[arg-type]

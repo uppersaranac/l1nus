@@ -124,6 +124,24 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
     :rtype: tuple[dict, list[str], list[str]]
     """
     logger = logging.getLogger(__name__)
+
+    # Filter generation kwargs based on do_sample setting
+    filtered_kwargs = generation_kwargs.copy()
+    do_sample = filtered_kwargs.get('do_sample', False)
+            
+    # If sampling is disabled, remove sampling-specific parameters to avoid warnings
+    if not do_sample:
+        sampling_params = ['temperature', 'top_p', 'top_k']
+        for param in sampling_params:
+            if param in filtered_kwargs:
+                # Only remove if they're at their neutral/default values
+                if param == 'temperature' and filtered_kwargs[param] == 1.0:
+                    filtered_kwargs.pop(param)
+                elif param == 'top_p' and filtered_kwargs[param] == 1.0:
+                    filtered_kwargs.pop(param)
+                elif param == 'top_k' and filtered_kwargs[param] == 0:
+                    filtered_kwargs.pop(param)
+
     model.eval()
     num_processed = 0
     
@@ -146,7 +164,7 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
                 input_ids=batch["input_ids"],
                 attention_mask=batch["attention_mask"],
                 max_new_tokens=max_new_tokens,
-                **generation_kwargs
+                **filtered_kwargs
             )
         generated_padded = accelerator.pad_across_processes(
                 generated, dim=1, pad_index=tokenizer.pad_token_id)

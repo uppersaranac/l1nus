@@ -24,14 +24,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset_dir", required=True, help="Directory with the dataset to evaluate")
     parser.add_argument("--model_name", required=True, help="HF model checkpoint to evaluate")
     parser.add_argument("--split", default="test", choices=["test", "valid", "val"], help="Dataset split to evaluate")
-    parser.add_argument("--per_device_eval_batch_size", type=int, default=2, help="Batch size for evaluation")
+    parser.add_argument("--per_device_eval_batch_size", type=int, default=64, help="Batch size for evaluation")
     parser.add_argument("--max_new_tokens", type=int, default=1024, help="Maximum number of new tokens to generate")
     parser.add_argument("--limit", type=int, default=None, help="If set, truncate the evaluation set to this many examples")
     parser.add_argument("--output_csv", type=str, default=None, help="Path to CSV file for gold/prediction output (default: dataset_dir/eval_predictions.csv)")
     parser.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty for generation")
-    parser.add_argument("--temperature", type=float, default=0.7, help="Temperature for generation")
-    parser.add_argument("--do_sample", action="store_true", help="Use sampling for generation")
-    parser.add_argument("--top_p", type=float, default=0.9, help="Top-p (nucleus) sampling threshold")
+    parser.add_argument("--temperature", type=float, default=1.0, help="Temperature for generation (only used with sampling, auto-enables do_sample if != 1.0)")
+    parser.add_argument("--do_sample", action="store_false", help="Use sampling for generation (auto-enabled if temperature != 1.0 or top_p != 1.0 or top_k != 0)")
+    parser.add_argument("--top_p", type=float, default=1.0, help="Top-p (nucleus) sampling threshold (only used with sampling, auto-enables do_sample if != 1.0)")
+    parser.add_argument("--top_k", type=int, default=0, help="Top-k sampling threshold (only used with sampling, auto-enables do_sample if != 0)")
     return parser.parse_args()
 
 def analyze_predictions_by_question_id(question_ids: list, gold_labels: list[str], predictions: list[str], tokenizer, show_examples: bool = False) -> None:
@@ -171,10 +172,14 @@ def main() -> None:
     columns_to_remove = [col for col in dataset.column_names if col not in columns_to_keep]
     dataset = dataset.remove_columns(columns_to_remove)
     if args.limit is not None:
-        dataset = dataset.select(range(min(args.limit, len(dataset))))
+        import numpy as np
+        rng = np.random.default_rng(seed=42)
+        indices = rng.choice(len(dataset), size=min(args.limit, len(dataset)), replace=False)
+        indices.sort()
+        dataset = dataset.select(indices)
         # Also limit the question_ids if they exist
         if original_question_ids is not None:
-            original_question_ids = original_question_ids[:min(args.limit, len(original_question_ids))]
+            original_question_ids = [original_question_ids[i] for i in indices]
     logger.info(f"Loaded {len(dataset)} examples from split '{split}'")
 
     # Load model and tokenizer
@@ -191,6 +196,13 @@ def main() -> None:
     dataloader = accelerator.prepare(dataloader)
 
     compute_metrics = compute_metrics_closure(tokenizer)
+    
+    # Auto-enable sampling if sampling parameters are provided
+    do_sample = args.do_sample
+    if not do_sample and (args.temperature != 1.0 or args.top_p != 1.0 or args.top_k != 0):
+        logger.info("Auto-enabling sampling because temperature, top_p, or top_k parameters were provided")
+        do_sample = True
+    
     metrics, preds, gold = do_evaluate(
         accelerator,
         model,
@@ -201,8 +213,9 @@ def main() -> None:
         num_examples=len(dataset),
         repetition_penalty=args.repetition_penalty,
         temperature=args.temperature,
-        do_sample=args.do_sample,
-        top_p=args.top_p
+        do_sample=do_sample,
+        top_p=args.top_p,
+        top_k=args.top_k
     )
     logger.info(f"Evaluation metrics: {metrics}")
 

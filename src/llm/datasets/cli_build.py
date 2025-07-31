@@ -52,8 +52,12 @@ def main() -> None:
 
     ds = load_questions_jsonl(q_path)
     if args.limit is not None:
-        logger.info("Randomly selecting %d records from %d total records", args.limit, len(ds))
-        ds = ds.shuffle(seed=42).select(range(min(args.limit, len(ds))))
+        logger.info("Randomly selecting %d records from %d total records (order preserved)", args.limit, len(ds))
+        import numpy as np
+        n = min(args.limit, len(ds))
+        idx = np.random.RandomState(seed=42).choice(len(ds), size=n, replace=False)
+        idx.sort()  # preserve original order
+        ds = ds.select(idx)
     if "split" in ds.column_names:
         split_ds = split_by_column(ds)
     else:
