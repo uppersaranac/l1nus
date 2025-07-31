@@ -10,7 +10,7 @@ from pathlib import Path
 
 from accelerate import Accelerator
 from datasets import DatasetDict, load_from_disk
-from llm.llm_apis import compute_metrics_closure, do_evaluate, do_generation, _norm_tagged
+from llm.llm_apis import compute_metrics_closure, do_evaluate, _norm_tagged
 from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.data.data_collator import default_data_collator
@@ -191,7 +191,7 @@ def main() -> None:
     dataloader = accelerator.prepare(dataloader)
 
     compute_metrics = compute_metrics_closure(tokenizer)
-    metrics = do_evaluate(
+    metrics, preds, gold = do_evaluate(
         accelerator,
         model,
         dataloader,
@@ -212,19 +212,8 @@ def main() -> None:
     else:
         csv_path = str(Path(args.dataset_dir) / "eval_predictions.csv")
     logger.info(f"Generating predictions and writing to {csv_path}")
-    preds = do_generation(
-        args.max_new_tokens,
-        tokenizer,
-        accelerator.unwrap_model(model).eval(),
-        dataset,
-        repetition_penalty=args.repetition_penalty,
-        temperature=args.temperature,
-        do_sample=args.do_sample,
-        top_p=args.top_p
-    )
-    dataset.set_format(type="torch", columns=["labels"])
-    labels_tensor = dataset["labels"].masked_fill(dataset["labels"] == -100, tokenizer.pad_token_id) # type: ignore[arg-type]
-    gold = tokenizer.batch_decode(labels_tensor, skip_special_tokens=True)
+    
+    # Use predictions and gold labels from do_evaluate instead of regenerating
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["index", "gold_label", "prediction"])

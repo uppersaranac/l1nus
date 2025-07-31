@@ -101,7 +101,7 @@ class AllPropertiesProcessor(QuestionSetProcessor):
         return answers, mask
 
 
-def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples: int = 100, **generation_kwargs) -> dict:
+def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, compute_metrics: Any, max_new_tokens: int, num_examples=None, **generation_kwargs) -> tuple[dict, list[str], list[str]]:
     """
     Run generation-based evaluation and log exact-match metric.
 
@@ -117,22 +117,30 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
     :type compute_metrics: Any
     :param max_new_tokens: Maximum number of new tokens.
     :type max_new_tokens: int
-    :param num_examples: Number of examples to evaluate.
-    :type num_examples: int
+    :param num_examples: Number of examples to evaluate. If None, evaluate the entire dataset.
+    :type num_examples: int or None
     :param generation_kwargs: Additional keyword arguments for generation (e.g., repetition_penalty, temperature, do_sample, top_p).
-    :return: Dictionary of evaluation metrics.
-    :rtype: dict
+    :return: Tuple of (metrics dictionary, predictions list, gold labels list).
+    :rtype: tuple[dict, list[str], list[str]]
     """
     logger = logging.getLogger(__name__)
     model.eval()
     num_processed = 0
+    
+    # Accumulate all predictions and labels for example output
+    all_accumulated_preds = []
+    all_accumulated_labels = []
+    
     for batch in dataloader:
         batch_size = batch["input_ids"].size(0)
-        if num_processed + batch_size > num_examples:
+        
+        # Handle num_examples logic - if None, process entire dataset
+        if num_examples is not None and num_processed + batch_size > num_examples:
             trim = num_examples - num_processed
             for k in batch:
                 batch[k] = batch[k][:trim]
             batch_size = trim
+            
         with torch.no_grad():
             generated = accelerator.unwrap_model(model).generate(
                 input_ids=batch["input_ids"],
@@ -146,30 +154,53 @@ def do_evaluate(accelerator: Any, model: Any, dataloader: Any, tokenizer: Any, c
                 batch["labels"], dim=1, pad_index=-100)
         gen_all    = accelerator.gather(generated_padded)
         labels_all = accelerator.gather(labels_padded)
+        
+        # Accumulate for example output if main process
+        if accelerator.is_main_process:
+            all_accumulated_preds.append(gen_all.cpu().numpy())
+            all_accumulated_labels.append(labels_all.cpu().numpy())
+        
         compute_metrics((gen_all.cpu().numpy(), labels_all.cpu().numpy()), compute_result=False)
         num_processed += batch_size
-        if num_processed >= num_examples:
+        
+        # Break if we've processed enough examples (only if num_examples is not None)
+        if num_examples is not None and num_processed >= num_examples:
             break
+            
     metrics = compute_metrics((torch.empty(0), torch.empty(0)), compute_result=True)
-    if accelerator.is_main_process:
+    
+    # Initialize return values
+    preds = []
+    gold = []
+    
+    if accelerator.is_main_process and all_accumulated_preds:
         try:
-            sample_ds = dataloader.dataset.select(range(min(num_examples, len(dataloader.dataset))))
-            preds = do_generation(
-                max_new_tokens,
-                tokenizer,
-                accelerator.unwrap_model(model).eval(),
-                sample_ds,
-                **generation_kwargs
-            )
-            sample_ds.set_format(type="torch", columns=["labels"])
-            labels_tensor = sample_ds["labels"].masked_fill(sample_ds["labels"] == -100, tokenizer.pad_token_id)
-            gold = tokenizer.batch_decode(labels_tensor, skip_special_tokens=True)
-            for i, (g_pred, g_gold) in enumerate(zip(preds, gold)):
-                logger.info("\nEXAMPLE %d \n PRED: %s \n GOLD: %s\n", i, g_pred, g_gold)
+            # Concatenate all accumulated predictions and labels
+            concat_preds = np.concatenate(all_accumulated_preds, axis=0)
+            concat_labels = np.concatenate(all_accumulated_labels, axis=0)
+            
+            # Filter out-of-range tokens and decode
+            def filter_out_of_range(tokens, vocab_size, pad_token_id):
+                return [t if 0 <= t < vocab_size else pad_token_id for t in tokens]
+            
+            filtered_preds = [filter_out_of_range(seq, tokenizer.vocab_size, tokenizer.pad_token_id) for seq in concat_preds]
+            concat_labels = np.where(concat_labels != -100, concat_labels, tokenizer.pad_token_id)
+            filtered_labels = [filter_out_of_range(seq, tokenizer.vocab_size, tokenizer.pad_token_id) for seq in concat_labels]
+            
+            # Decode predictions and labels
+            preds = tokenizer.batch_decode(filtered_preds, skip_special_tokens=True)
+            gold = tokenizer.batch_decode(filtered_labels, skip_special_tokens=True)
+            
+            # Log examples (limit to first 10 to avoid overwhelming logs)
+            max_examples_to_log = min(10, len(preds))
+            for i in range(max_examples_to_log):
+                logger.info("\nEXAMPLE %d \n PRED: %s \n GOLD: %s\n", i, preds[i], gold[i])
+                
         except Exception as e:
-            logger.warning("Failed to generate example predictions: %s", e)
+            logger.warning("Failed to generate example predictions from accumulated data: %s", e)
+    
     model.train()
-    return metrics
+    return metrics, preds, gold
 
 
 def process_single_qa(
@@ -536,37 +567,3 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             # Return empty dict on intermediate calls
             return {}
     return compute_metrics
-
-def do_generation(max_new_tokens: int, tokenizer: Any, model: Any, data: Any, **generation_kwargs) -> list[str]:
-    """
-    Perform generation.  Will not work with distributed training.
-
-    :param max_new_tokens: Maximum number of new tokens.
-    :param tokenizer: Tokenizer instance.
-    :param model: Model instance.
-    :param data: Input data.
-    :param generation_kwargs: Additional keyword arguments for generation (e.g., repetition_penalty, temperature, do_sample, top_p).
-    :return: A list of generated prediction strings.
-    """
-    data.set_format(type="torch", columns=["input_ids", "attention_mask"])
-    input_ids = data["input_ids"].to(model.device)
-    attention_mask = data["attention_mask"].to(model.device)
-    
-    # Generate text
-    with torch.no_grad():
-        generated_ids = model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,
-            eos_token_id=tokenizer.eos_token_id,
-            pad_token_id=tokenizer.pad_token_id,
-            **generation_kwargs
-        ).to('cpu').numpy()
-
-    # Decode each sequence in the batch
-    decoded_sequences = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-    # Strip newline characters from each decoded sequence
-    response_texts = [seq.strip("\n") for seq in decoded_sequences]
-
-    return response_texts
-

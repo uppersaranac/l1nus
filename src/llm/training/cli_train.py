@@ -271,7 +271,7 @@ def main() -> None:
                     logger.info("Epoch %d | step %d | loss %.4f", epoch, global_step, last_loss)
 
             if global_step % args.eval_steps == 0 and global_step != 0:
-                eval_metrics = do_evaluate(
+                eval_metrics, _, _ = do_evaluate(
                     accelerator, model, eval_loader, tokenizer, compute_metrics, 
                     args.max_new_tokens, args.num_example_preds,
                     repetition_penalty=args.repetition_penalty,
@@ -287,7 +287,7 @@ def main() -> None:
             global_step += 1
 
         # ----- end-of-epoch evaluation & best-model saving -----
-        epoch_metrics = do_evaluate(
+        epoch_metrics, _, _ = do_evaluate(
             accelerator,
             model,
             eval_loader,
@@ -317,20 +317,6 @@ def main() -> None:
                 )
                 tokenizer.save_pretrained(best_dir)
 
-    # Final evaluation and save ---------------------------------------
-    epoch_metrics = do_evaluate(
-        accelerator,
-        model,
-        eval_loader,
-        tokenizer,
-        compute_metrics,
-        args.max_new_tokens,
-        args.eval_num_examples,
-        repetition_penalty=args.repetition_penalty,
-        temperature=args.temperature,
-        do_sample=args.do_sample,
-        top_p=args.top_p
-    )
     if accelerator.is_main_process:
         unwrapped = accelerator.unwrap_model(model)
         out_dir = Path(args.output_dir).expanduser()

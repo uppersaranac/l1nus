@@ -399,3 +399,54 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         properties["negative_formal_charge_count"].append(count_negative_formal_charge_atoms(mol))
 
     return properties
+
+def smiles_with_ring_atom_classes(mol: Any) -> str:
+    """
+    Return a SMILES string where each atom's atom class is set to the ring index (or indices) if the atom is in a ring.
+    If an atom is in multiple rings, the atom class is a concatenation of all ring indices (in increasing order).
+    If a ring index is two digits, prepend it with a % sign (e.g., %10).
+    Atoms not in any ring have no atom class.
+    This is done by first setting atom map numbers to atom index + 1, generating the SMILES, then using regex to replace
+    [C:idx] with [C:class] where class is the ring index string as described above.
+
+    :param mol: RDKit molecule object
+    :return: SMILES string with atom classes encoding ring membership
+    """
+    import copy
+    import re
+    mol = copy.deepcopy(mol)
+    ring_info = mol.GetRingInfo()
+    atom_rings = ring_info.AtomRings()  # tuple of atom idxs for each ring
+    # Build a mapping: atom idx -> list of ring indices
+    atom_to_rings = {i: [] for i in range(mol.GetNumAtoms())}
+    for ring_idx, ring in enumerate(atom_rings):
+        for atom_idx in ring:
+            atom_to_rings[atom_idx].append(ring_idx)
+    # Set atom map number for each atom to atom index + 1
+    for atom in mol.GetAtoms():
+        atom.SetAtomMapNum(atom.GetIdx() + 1)
+    # Generate SMILES with atom map numbers
+    smiles = Chem.MolToSmiles(mol, isomericSmiles=True)
+    # Regex to find [X:idx] and replace with [X:class]
+    def ring_class_str(rings):
+        s = ''
+        for r in sorted(rings):
+            ring_label = r + 1  # Use ring index + 1
+            if ring_label >= 10:
+                s += f'%{ring_label}'
+            else:
+                s += str(ring_label)
+        return s
+    def replace_atom(match):
+        atom = match.group(1)
+        idx = int(match.group(2)) - 1  # atom map idx is atom index + 1
+        rings = atom_to_rings.get(idx, [])
+        if rings:
+            cls = ring_class_str(rings)
+            return f'[{atom}:{cls}]'
+        else:
+            return f'[{atom}]'
+    # Replace all [X:idx] with [X:class] or [X] if not in ring
+    smiles = re.sub(r'\[([^\]:]+):(\d+)\]', replace_atom, smiles)
+    return smiles
+
