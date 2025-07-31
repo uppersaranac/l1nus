@@ -6,6 +6,7 @@ CLI: Evaluate a trained causal-LM on a tokenised dataset and output metrics and 
 import argparse
 import logging
 import csv
+import numpy as np
 from pathlib import Path
 
 from accelerate import Accelerator
@@ -172,7 +173,6 @@ def main() -> None:
     columns_to_remove = [col for col in dataset.column_names if col not in columns_to_keep]
     dataset = dataset.remove_columns(columns_to_remove)
     if args.limit is not None:
-        import numpy as np
         rng = np.random.default_rng(seed=42)
         indices = rng.choice(len(dataset), size=min(args.limit, len(dataset)), replace=False)
         indices.sort()

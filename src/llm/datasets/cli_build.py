@@ -12,6 +12,7 @@ Example:
 import argparse
 import datasets
 import logging
+import numpy as np
 from pathlib import Path
 
 from llm.datasets.preprocess import (
@@ -53,7 +54,6 @@ def main() -> None:
     ds = load_questions_jsonl(q_path)
     if args.limit is not None:
         logger.info("Randomly selecting %d records from %d total records (order preserved)", args.limit, len(ds))
-        import numpy as np
         n = min(args.limit, len(ds))
         idx = np.random.RandomState(seed=42).choice(len(ds), size=n, replace=False)
         idx.sort()  # preserve original order
