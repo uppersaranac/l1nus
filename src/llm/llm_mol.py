@@ -165,6 +165,23 @@ def count_stereocenters(mol: Any) -> int:
         return 0
     return rdMolDescriptors.CalcNumAtomStereoCenters(mol)
 
+def get_stereo_summary(mol: Any) -> list[int]:
+    """
+    Return a list: [number of stereocenters, number of stereo bonds] for the molecule.
+
+    :param mol: RDKit molecule object
+    :return: [stereocenter_count, stereo_bond_count]
+    """
+    if mol is None:
+        return [0, 0]
+    stereocenter_count = rdMolDescriptors.CalcNumAtomStereoCenters(mol)
+    stereo_bond_count = sum(
+        1
+        for bond in mol.GetBonds()
+        if bond.GetBondType() == Chem.rdchem.BondType.DOUBLE and bond.GetStereo() in [Chem.rdchem.BondStereo.STEREOE, Chem.rdchem.BondStereo.STEREOZ]
+    )
+    return [stereocenter_count, stereo_bond_count]
+
 def count_five_membered_rings(mol: Any) -> int:
     """
     Count 5-membered rings in a molecule.
@@ -217,12 +234,15 @@ def count_aromatic_six_membered_rings(mol: Any) -> int:
             count += 1
     return count
 
-def longest_chain_length(mol: Any) -> int:
+def longest_chain(mol: Any) -> list[int]:
     """
-    Return the length of the longest carbon chain in the molecule where none of the carbons are in a ring.
+    Return the list of atom indices in the longest carbon chain in the molecule where none of the carbons are in a ring.
+
+    :param mol: RDKit molecule object
+    :return: List of atom indices in the longest chain
     """
     if mol is None:
-        return 0
+        return []
     ri = mol.GetRingInfo()
     ring_atoms = set()
     for ring in ri.AtomRings():
@@ -231,9 +251,9 @@ def longest_chain_length(mol: Any) -> int:
     def is_carbon(atom):
         return atom.GetSymbol() == 'C'
 
-    def dfs(atom_idx, visited_atoms, visited_bonds):
-        max_len = 1
+    def dfs(atom_idx, visited_atoms, visited_bonds, path):
         atom = mol.GetAtomWithIdx(atom_idx)
+        longest = list(path)
         for bond in atom.GetBonds():
             bidx = bond.GetIdx()
             if bidx in visited_bonds:
@@ -247,16 +267,147 @@ def longest_chain_length(mol: Any) -> int:
                 continue
             new_visited_atoms = visited_atoms | {nbr}
             new_visited_bonds = visited_bonds | {bidx}
-            max_len = max(max_len, 1 + dfs(nbr, new_visited_atoms, new_visited_bonds))
-        return max_len
+            candidate = dfs(nbr, new_visited_atoms, new_visited_bonds, path + [nbr])
+            if len(candidate) > len(longest):
+                longest = candidate
+        return longest
 
-    overall_max = 0
+    longest_chain = []
     for atom in mol.GetAtoms():
         # Only start from carbon atoms that are not in rings
         if not is_carbon(atom) or atom.GetIdx() in ring_atoms:
             continue
-        overall_max = max(overall_max, dfs(atom.GetIdx(), {atom.GetIdx()}, set()))
-    return overall_max
+        candidate = dfs(atom.GetIdx(), {atom.GetIdx()}, set(), [atom.GetIdx()])
+        if len(candidate) > len(longest_chain):
+            longest_chain = candidate
+    return sorted(longest_chain, reverse=True)
+
+def sorted_rings(mol: Any) -> list[list[int]]:
+    """
+    Return all rings in the molecule as lists of atom indices, sorted in descending order within each ring.
+    The rings themselves are sorted by the max atom index (descending), then by min atom index (descending).
+
+    :param mol: RDKit molecule object
+    :return: List of rings, each a list of atom indices (sorted descending)
+    """
+    if mol is None:
+        return []
+    rings = [sorted(list(ring), reverse=True) for ring in mol.GetRingInfo().AtomRings()]
+    # Sort rings by max atom index (descending), then min atom index (descending)
+    rings.sort(key=lambda r: (max(r), min(r)), reverse=True)
+    return rings
+
+def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
+    """
+    Return the kekulized SMILES string for the given molecule.
+
+    :param mol: RDKit molecule object
+    :param atom_map: If True, output atom map numbers (atom index + 1)
+    :return: Kekulized SMILES string
+    """
+    if mol is None:
+        return ""
+    from rdkit.Chem import Kekulize, MolToSmiles
+    import copy
+    mol_kek = copy.deepcopy(mol)
+    if atom_map:
+        for atom in mol_kek.GetAtoms():
+            atom.SetAtomMapNum(atom.GetIdx() + 1)
+    else:
+        for atom in mol_kek.GetAtoms():
+            atom.SetAtomMapNum(0)
+    try:
+        Kekulize(mol_kek, clearAromaticFlags=True)
+    except Exception:
+        pass  # Kekulization may fail for some molecules
+    return MolToSmiles(mol_kek, kekuleSmiles=True, isomericSmiles=True)
+
+def get_hybridization_indices(mol: Any) -> list[list[int]]:
+    """
+    Return atom indices for sp3, sp2, and sp hybridization in the molecule.
+    Each list is sorted in descending order.
+
+    :param mol: RDKit molecule object
+    :return: Dict with keys 'sp3', 'sp2', 'sp' and values as lists of atom indices (sorted descending)
+    """
+    if mol is None:
+        return [[], [], []]
+    from rdkit.Chem.rdchem import HybridizationType
+    sp3 = []
+    sp2 = []
+    sp = []
+    for atom in mol.GetAtoms():
+        idx = atom.GetIdx()
+        hyb = atom.GetHybridization()
+        if hyb == HybridizationType.SP3:
+            sp3.append(idx)
+        elif hyb == HybridizationType.SP2:
+            sp2.append(idx)
+        elif hyb == HybridizationType.SP:
+            sp.append(idx)
+    return [
+        sorted(sp3, reverse=True),
+        sorted(sp2, reverse=True),
+        sorted(sp, reverse=True)
+        ]
+
+def get_element_atom_indices(mol: Any) -> list[list[int]]:
+    """
+    Return lists of atom indices for C, N, O, P, S, Cl, F in the molecule.
+    Each list is sorted in descending order.
+
+    :param mol: RDKit molecule object
+    :return: List of lists: [C, N, O, P, S, Cl, F] atom indices
+    """
+    if mol is None:
+        return [[] for _ in range(7)]
+    elements = ['C', 'N', 'O', 'P', 'S', 'Cl', 'F']
+    indices = [[] for _ in elements]
+    for atom in mol.GetAtoms():
+        symbol = atom.GetSymbol()
+        idx = atom.GetIdx()
+        for i, el in enumerate(elements):
+            if symbol == el:
+                indices[i].append(idx)
+    return [sorted(lst, reverse=True) for lst in indices]
+
+def get_bond_counts(mol: Any) -> list[int]:
+    """
+    Return a list with total number of bonds (including to hydrogen), number of double bonds, and number of triple bonds.
+
+    :param mol: RDKit molecule object
+    :return: [total_bonds, double_bonds, triple_bonds]
+    """
+    if mol is None:
+        return [0, 0, 0]
+    total_bonds = mol.GetNumBonds()
+    double_bonds = 0
+    triple_bonds = 0
+    for bond in mol.GetBonds():
+        if bond.GetBondType() == Chem.rdchem.BondType.DOUBLE:
+            double_bonds += 1
+        elif bond.GetBondType() == Chem.rdchem.BondType.TRIPLE:
+            triple_bonds += 1
+    return [total_bonds, double_bonds, triple_bonds]
+
+def get_ring_counts(mol: Any) -> list[int]:
+    """
+    Return a list containing the number of: all rings, aromatic rings, 5-membered rings, 6-membered rings.
+
+    :param mol: RDKit molecule object
+    :return: [all_rings, aromatic_rings, five_membered_rings, six_membered_rings]
+    """
+    if mol is None:
+        return [0, 0, 0, 0]
+    all_rings = rdMolDescriptors.CalcNumRings(mol)
+    aromatic_rings = 0
+    for ring in Chem.GetSymmSSSR(mol):
+        atoms = list(ring)
+        if all(mol.GetBondBetweenAtoms(a1, a2).GetIsAromatic() for a1, a2 in zip(atoms, atoms[1:] + [atoms[0]])):
+            aromatic_rings += 1
+    five_membered_rings = sum(1 for ring in Chem.GetSymmSSSR(mol) if len(ring) == 5)
+    six_membered_rings = sum(1 for ring in Chem.GetSymmSSSR(mol) if len(ring) == 6)
+    return [all_rings, aromatic_rings, five_membered_rings, six_membered_rings]
 
 def count_total_hydrogens(mol: Any) -> int:
     """
@@ -333,70 +484,87 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
     :rtype: MutableMapping[str, Sequence[Any]]
     """
     properties = {
-        "carbon_count": [],
-        "nitrogen_count": [],
-        "oxygen_count": [],
-        "sulfur_count": [],
-        "phosphorus_count": [],
-        "chlorine_count": [],
-        "fluorine_count": [],
-        "ring_count": [],
-        "aromatic_ring_count": [],
-        "five_membered_ring_count": [],
-        "aromatic_five_membered_ring_count": [],
-        "six_membered_ring_count": [],
-        "aromatic_six_membered_ring_count": [],
-        "aromatic_heterocycle_count": [],
-        "aromatic_carbocycle_count": [],
-        "aliphatic_heterocycle_count": [],
-        "aliphatic_carbocycle_count": [],
-        "saturated_heterocycle_count": [],
-        "saturated_carbocycle_count": [],
-        "longest_chain_length": [],
-        "hydrogen_count": [],
-        "fused_ring_count": [],
-        "double_bond_count": [],
-        "triple_bond_count": [],
-        "stereo_double_bond_count": [],
+#        "carbon_count": [],
+#        "nitrogen_count": [],
+#        "oxygen_count": [],
+#        "sulfur_count": [],
+#        "phosphorus_count": [],
+#        "chlorine_count": [],
+#        "fluorine_count": [],
+#        "ring_count": [],
+#        "aromatic_ring_count": [],
+#        "five_membered_ring_count": [],
+#        "aromatic_five_membered_ring_count": [],
+#        "six_membered_ring_count": [],
+#        "aromatic_six_membered_ring_count": [],
+#        "aromatic_heterocycle_count": [],
+#        "aromatic_carbocycle_count": [],
+#        "aliphatic_heterocycle_count": [],
+#        "aliphatic_carbocycle_count": [],
+#        "saturated_heterocycle_count": [],
+#        "saturated_carbocycle_count": [],
+        "longest_chain": [],
+#        "hydrogen_count": [],
+#        "fused_ring_count": [],
+#        "double_bond_count": [],
+#        "triple_bond_count": [],
+#        "stereo_double_bond_count": [],
         "stereocenter_count": [],
         "heavy_atom_count": [],
-        "non_hydrogen_bond_count": [],
+#        "non_hydrogen_bond_count": [],
         "positive_formal_charge_count": [],
         "negative_formal_charge_count": [],
+        # New functions
+        "sorted_rings": [],
+        "kekulized_smiles": [],
+        "kekulized_smiles_atom_map": [],
+        "hybridization_indices": [],
+        "element_atom_indices": [],
+        "bond_counts": [],
+        "ring_counts": [],
+        "stereo_summary": [],
     }
 
     for s in smiles_list:
         mol = Chem.MolFromSmiles(s)
-        properties["carbon_count"].append(count_carbon_atoms(mol))
-        properties["nitrogen_count"].append(count_nitrogen_atoms(mol))
-        properties["oxygen_count"].append(count_oxygen_atoms(mol))
-        properties["sulfur_count"].append(count_sulfur_atoms(mol))
-        properties["phosphorus_count"].append(count_phosphorus_atoms(mol))
-        properties["chlorine_count"].append(count_chlorine_atoms(mol))
-        properties["fluorine_count"].append(count_fluorine_atoms(mol))
-        properties["ring_count"].append(count_rings(mol))
-        properties["aromatic_ring_count"].append(count_aromatic_rings(mol))
-        properties["five_membered_ring_count"].append(count_five_membered_rings(mol))
-        properties["aromatic_five_membered_ring_count"].append(count_aromatic_five_membered_rings(mol))
-        properties["six_membered_ring_count"].append(count_six_membered_rings(mol))
-        properties["aromatic_six_membered_ring_count"].append(count_aromatic_six_membered_rings(mol))
-        properties["longest_chain_length"].append(longest_chain_length(mol))
-        properties["hydrogen_count"].append(count_total_hydrogens(mol))
-        properties["fused_ring_count"].append(count_fused_rings(mol))
-        properties["aromatic_heterocycle_count"].append(count_aromatic_heterocycles(mol))
-        properties["aromatic_carbocycle_count"].append(count_aromatic_carbocycles(mol))
-        properties["aliphatic_heterocycle_count"].append(count_aliphatic_heterocycles(mol))
-        properties["aliphatic_carbocycle_count"].append(count_aliphatic_carbocycles(mol))
-        properties["saturated_heterocycle_count"].append(count_saturated_heterocycles(mol))
-        properties["saturated_carbocycle_count"].append(count_saturated_carbocycles(mol))
-        properties["double_bond_count"].append(count_double_bonds(mol))
-        properties["triple_bond_count"].append(count_triple_bonds(mol))
-        properties["stereo_double_bond_count"].append(count_stereo_double_bonds(mol))
+#        properties["carbon_count"].append(count_carbon_atoms(mol))
+#        properties["nitrogen_count"].append(count_nitrogen_atoms(mol))
+#        properties["oxygen_count"].append(count_oxygen_atoms(mol))
+#        properties["sulfur_count"].append(count_sulfur_atoms(mol))
+#        properties["phosphorus_count"].append(count_phosphorus_atoms(mol))
+#        properties["chlorine_count"].append(count_chlorine_atoms(mol))
+#        properties["fluorine_count"].append(count_fluorine_atoms(mol))
+#        properties["ring_count"].append(count_rings(mol))
+#        properties["aromatic_ring_count"].append(count_aromatic_rings(mol))
+#        properties["five_membered_ring_count"].append(count_five_membered_rings(mol))
+#        properties["aromatic_five_membered_ring_count"].append(count_aromatic_five_membered_rings(mol))
+#        properties["six_membered_ring_count"].append(count_six_membered_rings(mol))
+#        properties["aromatic_six_membered_ring_count"].append(count_aromatic_six_membered_rings(mol))
+        properties["longest_chain"].append(longest_chain(mol))
+#        properties["hydrogen_count"].append(count_total_hydrogens(mol))
+#        properties["fused_ring_count"].append(count_fused_rings(mol))
+#        properties["aromatic_heterocycle_count"].append(count_aromatic_heterocycles(mol))
+#        properties["aromatic_carbocycle_count"].append(count_aromatic_carbocycles(mol))
+#        properties["aliphatic_heterocycle_count"].append(count_aliphatic_heterocycles(mol))
+#        properties["aliphatic_carbocycle_count"].append(count_aliphatic_carbocycles(mol))
+#        properties["saturated_heterocycle_count"].append(count_saturated_heterocycles(mol))
+#        properties["saturated_carbocycle_count"].append(count_saturated_carbocycles(mol))
+#        properties["double_bond_count"].append(count_double_bonds(mol))
+#        properties["triple_bond_count"].append(count_triple_bonds(mol))
+#        properties["stereo_double_bond_count"].append(count_stereo_double_bonds(mol))
         properties["stereocenter_count"].append(count_stereocenters(mol))
         properties["heavy_atom_count"].append(count_heavy_atoms(mol))
-        properties["non_hydrogen_bond_count"].append(count_non_hydrogen_bonds(mol))
+#        properties["non_hydrogen_bond_count"].append(count_non_hydrogen_bonds(mol))
         properties["positive_formal_charge_count"].append(count_positive_formal_charge_atoms(mol))
         properties["negative_formal_charge_count"].append(count_negative_formal_charge_atoms(mol))
+        properties["sorted_rings"].append(sorted_rings(mol))
+        properties["kekulized_smiles"].append(kekulized_smiles(mol))
+        properties["kekulized_smiles_atom_map"].append(kekulized_smiles(mol, atom_map=True))
+        properties["hybridization_indices"].append(get_hybridization_indices(mol))
+        properties["element_atom_indices"].append(get_element_atom_indices(mol))
+        properties["bond_counts"].append(get_bond_counts(mol))
+        properties["ring_counts"].append(get_ring_counts(mol))
+        properties["stereo_summary"].append(get_stereo_summary(mol))
 
     return properties
 

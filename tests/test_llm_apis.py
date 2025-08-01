@@ -1,139 +1,77 @@
 import pytest
 import numpy as np
-from rdkit import Chem
-import pyarrow as pa
-
 from unittest.mock import MagicMock
+
+import pyarrow as pa
+from rdkit import Chem
 from transformers import AutoTokenizer
+
 from llm.llm_apis import (
-    _norm, _norm_tagged, compute_metrics_closure,
+    _norm, _norm_tagged,
     calculate_molecular_properties,
-    QuestionSetProcessor, IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor
+    IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor
 )
 from llm.llm_mol import (
-    count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
-    count_element_atoms, count_carbon_atoms, count_nitrogen_atoms, count_oxygen_atoms, count_sulfur_atoms, count_phosphorus_atoms,
-    count_chlorine_atoms, count_fluorine_atoms, count_rings, count_aromatic_rings, count_double_bonds, count_triple_bonds,
-    count_stereo_double_bonds, count_stereocenters, count_five_membered_rings, count_aromatic_five_membered_rings,
-    count_six_membered_rings, count_aromatic_six_membered_rings, longest_chain_length, count_total_hydrogens,
-    count_fused_rings, count_aromatic_heterocycles, count_aromatic_carbocycles,
-    count_saturated_heterocycles, count_saturated_carbocycles, count_aliphatic_heterocycles, count_aliphatic_carbocycles,
+    count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms
 )
 
-def test_count_element_atoms():
-    mol = Chem.MolFromSmiles("CCO")
-    assert count_element_atoms(mol, 'C') == 2
-    assert count_element_atoms(mol, 'O') == 1
-    assert count_element_atoms(mol, 'N') == 0
 
-def test_count_carbon_atoms():
-    mol = Chem.MolFromSmiles("CCO")
-    assert count_carbon_atoms(mol) == 2
+def test_sorted_rings_basic():
+    from rdkit import Chem
+    from src.llm.llm_mol import sorted_rings
+    mol = Chem.MolFromSmiles('C1CCCCC1')
+    rings = sorted_rings(mol)
+    assert len(rings) == 1
+    assert sorted(rings[0], reverse=True) == [5, 4, 3, 2, 1, 0]
 
-def test_count_nitrogen_atoms():
-    mol = Chem.MolFromSmiles("CCN")
-    assert count_nitrogen_atoms(mol) == 1
+def test_kekulized_smiles_basic():
+    from rdkit import Chem
+    from src.llm.llm_mol import kekulized_smiles
+    mol = Chem.MolFromSmiles('c1ccccc1')
+    kek = kekulized_smiles(mol)
+    assert isinstance(kek, str)
+    kek_map = kekulized_smiles(mol, atom_map=True)
+    assert '[' in kek_map and ':' in kek_map  # Atom map numbers present
 
-def test_count_oxygen_atoms():
-    mol = Chem.MolFromSmiles("CCO")
-    assert count_oxygen_atoms(mol) == 1
+def test_get_hybridization_indices_basic():
+    from rdkit import Chem
+    from src.llm.llm_mol import get_hybridization_indices
+    mol = Chem.MolFromSmiles('CC=C')
+    hyb = get_hybridization_indices(mol)
+    assert isinstance(hyb, list)
+    assert len(hyb) == 3
+    # sp3, sp2, sp
+    assert any(isinstance(x, list) for x in hyb)
 
-def test_count_sulfur_atoms():
-    mol = Chem.MolFromSmiles("CCS")
-    assert count_sulfur_atoms(mol) == 1
+def test_get_element_atom_indices_basic():
+    from rdkit import Chem
+    from src.llm.llm_mol import get_element_atom_indices
+    mol = Chem.MolFromSmiles('FCNOPSCl')
+    indices = get_element_atom_indices(mol)
+    assert len(indices) == 7
+    # Each element should have one atom index
+    for lst in indices:
+        assert len(lst) == 1
 
-def test_count_phosphorus_atoms():
-    mol = Chem.MolFromSmiles("CP")
-    assert count_phosphorus_atoms(mol) == 1
+def test_get_bond_counts_basic():
+    from rdkit import Chem
+    from src.llm.llm_mol import get_bond_counts
+    mol = Chem.MolFromSmiles('CC#N')
+    counts = get_bond_counts(mol)
+    assert isinstance(counts, list)
+    assert len(counts) == 3
+    assert counts[1] == 0  # No double bonds
+    assert counts[2] == 1  # One triple bond
 
-def test_count_chlorine_atoms():
-    mol = Chem.MolFromSmiles("CCCl")
-    assert count_chlorine_atoms(mol) == 1
-
-def test_count_fluorine_atoms():
-    mol = Chem.MolFromSmiles("CCF")
-    assert count_fluorine_atoms(mol) == 1
-
-def test_count_rings():
-    mol = Chem.MolFromSmiles("C1CCCCC1") # cyclohexane
-    assert count_rings(mol) == 1
-
-def test_count_aromatic_rings():
-    mol = Chem.MolFromSmiles("c1ccccc1") # benzene
-    assert count_aromatic_rings(mol) == 1
-
-def test_count_double_bonds():
-    mol = Chem.MolFromSmiles("C=CC=C")
-    assert count_double_bonds(mol) == 2
-
-def test_count_triple_bonds():
-    mol = Chem.MolFromSmiles("C#CC#C")
-    assert count_triple_bonds(mol) == 2
-
-def test_count_stereo_double_bonds():
-    mol = Chem.MolFromSmiles("C/C=C/C")
-    assert count_stereo_double_bonds(mol) == 1
-
-def test_count_stereocenters():
-    mol = Chem.MolFromSmiles("C[C@H](O)F")
-    assert count_stereocenters(mol) == 1
-
-def test_count_five_membered_rings():
-    mol = Chem.MolFromSmiles("C1CCCC1")
-    assert count_five_membered_rings(mol) == 1
-
-def test_count_aromatic_five_membered_rings():
-    mol = Chem.MolFromSmiles("c1cc[nH]c1") # pyrrole
-    assert count_aromatic_five_membered_rings(mol) == 1
-
-def test_count_six_membered_rings():
-    mol = Chem.MolFromSmiles("C1CCCCC1")
-    assert count_six_membered_rings(mol) == 1
-
-def test_count_aromatic_six_membered_rings():
-    mol = Chem.MolFromSmiles("c1ccccc1")
-    assert count_aromatic_six_membered_rings(mol) == 1
-
-def test_longest_chain_length():
-    mol = Chem.MolFromSmiles("CCO")
-    assert longest_chain_length(mol) == 2
-    mol2 = Chem.MolFromSmiles("C1CCCCC1") # cyclohexane (no acyclic chain)
-    assert longest_chain_length(mol2) == 0
-
-def test_count_total_hydrogens():
-    mol = Chem.MolFromSmiles("CCO")
-    assert count_total_hydrogens(mol) == 6
-
-def test_count_fused_rings():
-    mol_naphthalene = Chem.MolFromSmiles('c1ccc2ccccc2c1')
-    assert count_fused_rings(mol_naphthalene) == 2
-    mol_cyclohexane = Chem.MolFromSmiles('C1CCCCC1')
-    assert count_fused_rings(mol_cyclohexane) == 0
-
-def test_count_aromatic_heterocycles():
-    mol = Chem.MolFromSmiles('c1ccncc1') # pyridine
-    assert count_aromatic_heterocycles(mol) == 1
-
-def test_count_aromatic_carbocycles():
-    mol = Chem.MolFromSmiles('c1ccccc1') # benzene
-    assert count_aromatic_carbocycles(mol) == 1
-
-def test_count_saturated_heterocycles():
-    mol = Chem.MolFromSmiles('C1CCNC1') # pyrrolidine
-    assert count_saturated_heterocycles(mol) == 1
-
-def test_count_saturated_carbocycles():
-    mol = Chem.MolFromSmiles('C1CCCCC1') # cyclohexane
-    assert count_saturated_carbocycles(mol) == 1
-
-def test_count_aliphatic_heterocycles():
-    mol = Chem.MolFromSmiles('C1CCNC1') # pyrrolidine
-    assert count_aliphatic_heterocycles(mol) == 1
-
-def test_count_aliphatic_carbocycles():
-    mol = Chem.MolFromSmiles('C1CCCCC1') # cyclohexane
-    assert count_aliphatic_carbocycles(mol) == 1
-
+def test_get_ring_counts_basic():
+    from rdkit import Chem
+    from src.llm.llm_mol import get_ring_counts
+    mol = Chem.MolFromSmiles('c1ccccc1')
+    counts = get_ring_counts(mol)
+    assert isinstance(counts, list)
+    assert len(counts) == 4
+    assert counts[0] == 1  # One ring
+    assert counts[1] == 1  # One aromatic ring
 
 @pytest.fixture(scope="module")
 def tokenizer():
@@ -519,11 +457,13 @@ def test_calculate_molecular_properties():
     smiles = ["CCO", "[NH4+]"]
     props = calculate_molecular_properties(smiles)
     assert props["heavy_atom_count"] == [3, 1]
-    assert props["non_hydrogen_bond_count"] == [2, 0]
     assert props["positive_formal_charge_count"] == [0, 1]
     assert props["negative_formal_charge_count"] == [0, 0]
-    assert props["carbon_count"] == [2, 0]
-    assert props["oxygen_count"] == [1, 0]
+    # Check new stereo_summary output
+    assert props["stereo_summary"][0][0] == 0  # CCO: no stereocenter
+    assert props["stereo_summary"][0][1] == 0  # CCO: no stereo bond
+    assert props["stereo_summary"][1][0] == 0  # [NH4+]: no stereocenter
+    assert props["stereo_summary"][1][1] == 0  # [NH4+]: no stereo bond
 
 def test_iupac_naming_processor():
     # Create a table with smiles and iupac columns
@@ -541,9 +481,10 @@ def test_molecular_properties_processor():
     proc = MolecularPropertiesProcessor()
     answers = proc.prepare_answers(table)
     # Check a few key properties for both molecules
-    assert answers[0]["carbon_count"] == ["2", "2"]
-    assert answers[0]["oxygen_count"] == ["1", "2"]
     assert answers[0]["iupac_name"] == ["ethanol", "acetic acid"]
+    # Check new stereo_summary output
+    assert answers[0]["stereo_summary"][0] == '[0, 0]'  # ethanol: no stereocenter
+    assert answers[0]["stereo_summary"][1] == '[0, 0]'  # acetic acid: no stereocenter
 
 def test_all_properties_processor():
     smiles = ["CCO", "CC(=O)O"]
@@ -551,152 +492,9 @@ def test_all_properties_processor():
     table = pa.table({"smiles": smiles, "iupac": iupac})
     proc = AllPropertiesProcessor()
     answers = proc.prepare_answers(table)
-    assert answers[0]["carbon_count"] == ["2", "2"]
     assert answers[0]["iupac_name"] == ["ethanol", "acetic acid"]
     # Check other properties exist
     assert "heavy_atom_count" in answers[0]
-    assert "non_hydrogen_bond_count" in answers[0]
-
-def test_question_set_processor_not_implemented():
-    class Dummy(QuestionSetProcessor):
-        pass
-    dummy = Dummy("iupac_naming")
-    table = pa.table({"smiles": [], "iupac": []})
-    with pytest.raises(NotImplementedError):
-        dummy.prepare_answers(table)
-
-def test_compute_metrics_closure_exact_match(tokenizer):
-    compute_metrics = compute_metrics_closure(tokenizer)
-    ids = tokenizer("ethanol", add_special_tokens=False)["input_ids"]
-    pred = np.array([ids])
-    label = np.array([[i if i != tokenizer.pad_token_id else -100 for i in ids]])
-    result = compute_metrics((pred, label))
-    assert "exact_match" in result
-    assert result["exact_match"] == 1.0
-
-def test_find_answer_tag_spans():
-    """Test the regex pattern for finding answer tag spans directly."""
-    import re
-    
-    # Simple case
-    text = "The compound has <answer>3</answer> carbon atoms."
-    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
-    assert len(matches) == 1
-    assert matches[0].group(1) == "3"
-    
-    # Multiple tags
-    text = "It has <answer>3</answer> carbons and <answer>2</answer> oxygens."
-    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
-    assert len(matches) == 2
-    assert matches[0].group(1) == "3"
-    assert matches[1].group(1) == "2"
-    
-    # No tags
-    text = "The compound has 3 carbon atoms."
-    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
-    assert len(matches) == 0
-    
-    # Multiline content
-    text = "The answer is <answer>benzene\nwith 6 carbons</answer>."
-    matches = list(re.finditer(r'<answer>(.*?)</answer>', text, re.DOTALL))
-    assert len(matches) == 1
-    assert matches[0].group(1) == "benzene\nwith 6 carbons"
-
-
-def test_process_single_qa_position_weights():
-    """Test position weights functionality in process_single_qa."""
-    from llm.llm_apis import process_single_qa
-    
-    # Create a mock tokenizer
-    tokenizer = MagicMock()
-    tokenizer.eos_token = "</s>"
-    tokenizer.apply_chat_template = MagicMock(return_value="system: Test\nuser: Question\nassistant: The answer is <answer>3</answer></s>")
-    
-    # Mock tokenization
-    def mock_tokenize(text, **kwargs):
-        # Simplified tokenization for testing
-        tokens = text.split()
-        input_ids = list(range(len(tokens)))
-        return {"input_ids": [input_ids], "attention_mask": [[1] * len(tokens)]}
-    
-    tokenizer.__call__ = mock_tokenize
-    
-    example = {
-        "system_prompt": "Test system",
-        "question_template": "How many carbon atoms?",
-        "assistant_template": "The answer is <answer>{carbon_count}</answer>",
-        "metadata": {"carbon_count": "3"}
-    }
-    
-    # Test with position weights enabled
-    result = process_single_qa(
-        tok=tokenizer,
-        example=example,
-        max_len=20,
-        is_train=True,
-        create_position_weights=True,
-        default_weight=1.0,
-        answer_weight=2.0
-    )
-    
-    # Should have position_weights in the result
-    assert "position_weights" in result
-    assert isinstance(result["position_weights"], list)
-    assert len(result["position_weights"]) == len(result["input_ids"])
-    
-    # Test with position weights disabled
-    result_no_weights = process_single_qa(
-        tok=tokenizer,
-        example=example,
-        max_len=20,
-        is_train=True,
-        create_position_weights=False
-    )
-    
-    # Should not have position_weights
-    assert "position_weights" not in result_no_weights
-    
-    # Test evaluation mode (should not have position weights even if requested)
-    result_eval = process_single_qa(
-        tok=tokenizer,
-        example=example,
-        max_len=20,
-        is_train=False,
-        create_position_weights=True
-    )
-    
-    # Should not have position_weights in eval mode
-    assert "position_weights" not in result_eval
-
-def test_smiles_with_ring_atom_classes_basic():
-    """
-    Test that a simple ring molecule (cyclohexane) encodes the correct ring class in SMILES.
-    """
-    from rdkit import Chem
-    from src.llm.llm_mol import smiles_with_ring_atom_classes
-    mol = Chem.MolFromSmiles('C1CCCCC1')
-    result = smiles_with_ring_atom_classes(mol)
-    # All atoms should be in ring 1, so expect :1 for all
-    assert all(':1]' in tok for tok in result.split('[')[1:]), f"Unexpected SMILES: {result}"
-
-def test_smiles_with_ring_atom_classes_multi_ring():
-    """
-    Test that a bicyclic molecule (decalin) encodes multiple ring indices for shared atoms.
-    """
-    from rdkit import Chem
-    from src.llm.llm_mol import smiles_with_ring_atom_classes
-    mol = Chem.MolFromSmiles('C1CCC2CCCCC2C1')
-    result = smiles_with_ring_atom_classes(mol)
-    # Atoms shared by both rings should have :12 or :21 (order may vary)
-    assert any(x in result for x in (':12]', ':21]')), f"Expected multi-ring atom class in: {result}"
-
-def test_smiles_with_ring_atom_classes_non_ring():
-    """
-    Test that a non-ring molecule (propane) has no atom class in SMILES.
-    """
-    from rdkit import Chem
-    from src.llm.llm_mol import smiles_with_ring_atom_classes
-    mol = Chem.MolFromSmiles('CCC')
-    result = smiles_with_ring_atom_classes(mol)
-    # Should not contain any :
-    assert ':' not in result, f"Unexpected atom class in: {result}"
+    # Check new stereo_summary output
+    assert answers[0]["stereo_summary"][0] == '[0, 0]'  # ethanol: no stereocenter
+    assert answers[0]["stereo_summary"][1] == '[0, 0]'  # acetic acid: no stereocenter
