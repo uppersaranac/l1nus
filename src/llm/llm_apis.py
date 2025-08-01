@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, Callable
 
-import evaluate
 import logging
 import numpy as np
 import pyarrow as pa
@@ -472,8 +471,6 @@ def find_answer_token_positions(tokenizer: Any, prompt_str: str, answer_str: str
             return (i, i + len(answer_list))
     return None
 
-exact_match = evaluate.load("exact_match")
-
 def _norm(s: str, tokenizer: Any = None) -> str:
     """
     Normalize prediction/label strings for exact-match comparison.
@@ -555,15 +552,17 @@ def _norm_tagged(s: str, tokenizer: Any = None) -> str:
     return s.strip()
 
 
-def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
+def compute_metrics_closure(tokenizer: Any, compare: str) -> Callable[[Any], Any]:
     """
     Compute metrics closure.
 
     :param tokenizer: Tokenizer instance.
+    :param compare: Comparison type.
     :return: Metrics computation function.
     """
     all_preds = []
     all_labels = []
+
     def compute_metrics(eval_preds, compute_result: bool = True) -> dict:
         """
         Compute metrics. With batch_eval_metrics=True, this function is called per batch and at the end with compute_result=True.
@@ -602,9 +601,33 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
         
         if compute_result:
             # Compute metrics only on the final call
-            exact_m = exact_match.compute(
-                predictions=all_preds, references=all_labels
-            )
+            # Custom exact match computation
+            matches = 0
+            total = len(all_preds)
+            
+            for pred, label in zip(all_preds, all_labels):
+                is_match = False
+                
+                if label.startswith('[') or label.startswith('{'):
+                    # Handle Python literals
+                    try:
+                        import ast
+                        label_obj = ast.literal_eval(label)
+                        pred_obj = ast.literal_eval(pred)
+                        is_match = (label_obj == pred_obj)
+                    except (ValueError, SyntaxError, TypeError):
+                        # If literal evaluation fails, no match
+                        is_match = False
+                else:
+                    # Handle regular string comparison
+                    is_match = (pred == label)
+                
+                if is_match:
+                    matches += 1
+            
+            exact_match_score = matches / total if total > 0 else 0.0
+            exact_m = {"exact_match": exact_match_score}
+            
             # Reset for next eval
             all_preds = []
             all_labels = []

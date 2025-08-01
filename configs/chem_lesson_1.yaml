@@ -1,0 +1,18 @@
+# Configuration for molecular property counting questions
+system_prompt: "You are a chemist. Place answers in <answer> tags. Do not explain. "
+
+question_set: chem_lesson_1
+
+questions:
+  - id: repeat_smiles
+    user_template: "Repeat back the SMILES {kekulized_smiles}\n"
+    assistant_template: "The SMILES is <answer>{kekulized_smiles}</answer>\n"
+  - id: element_counts
+    user_template: "What are the counts of the elements C, N, O, P, S, Cl, F in  {kekulized_smiles}? The answer should be a list\n"
+    assistant_template: "The counts are <answer>{element_counts}</answer>\n"
+  - id: hybridization_indices
+    user_template: "What are the atom map numbers for atoms with sp3, sp2, and sp hybridization in {kekulized_smiles_atom_map}? The answer should be a list of sets\n"
+    assistant_template: "The atom map numbers are <answer>{hybridization_indices}</answer>\n"
+  - id: net_formal_charge
+    user_template: "What is the net formal charge of {kekulized_smiles}?\n"
+    assistant_template: "The net formal charge is <answer>{net_formal_charge}</answer>\n"

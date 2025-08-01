@@ -44,6 +44,17 @@ def count_negative_formal_charge_atoms(mol: Any) -> int:
         return 0
     return sum(1 for atom in mol.GetAtoms() if atom.GetFormalCharge() < 0)
 
+def get_net_formal_charge(mol: Any) -> int:
+    """
+    Return the net formal charge of the molecule (sum of all formal charges).
+    
+    :param mol: RDKit molecule object
+    :return: Net formal charge as an integer
+    """
+    if mol is None:
+        return 0
+    return sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
+
 def count_element_atoms(mol: Any, element: str) -> int:
     """
     Count the number of atoms of a specific element in a molecule.
@@ -234,7 +245,7 @@ def count_aromatic_six_membered_rings(mol: Any) -> int:
             count += 1
     return count
 
-def longest_chain(mol: Any) -> list[int]:
+def longest_chain(mol: Any) -> set[int]:
     """
     Return the list of atom indices in the longest carbon chain in the molecule where none of the carbons are in a ring.
 
@@ -242,7 +253,7 @@ def longest_chain(mol: Any) -> list[int]:
     :return: List of atom indices in the longest chain
     """
     if mol is None:
-        return []
+        return set()
     ri = mol.GetRingInfo()
     ring_atoms = set()
     for ring in ri.AtomRings():
@@ -280,9 +291,9 @@ def longest_chain(mol: Any) -> list[int]:
         candidate = dfs(atom.GetIdx(), {atom.GetIdx()}, set(), [atom.GetIdx()])
         if len(candidate) > len(longest_chain):
             longest_chain = candidate
-    return sorted(longest_chain, reverse=True)
+    return set(longest_chain)
 
-def sorted_rings(mol: Any) -> list[list[int]]:
+def sorted_rings(mol: Any) -> list[set[int]]:
     """
     Return all rings in the molecule as lists of atom indices, sorted in descending order within each ring.
     The rings themselves are sorted by the max atom index (descending), then by min atom index (descending).
@@ -292,9 +303,8 @@ def sorted_rings(mol: Any) -> list[list[int]]:
     """
     if mol is None:
         return []
-    rings = [sorted(list(ring), reverse=True) for ring in mol.GetRingInfo().AtomRings()]
+    rings = [set(ring) for ring in mol.GetRingInfo().AtomRings()]
     # Sort rings by max atom index (descending), then min atom index (descending)
-    rings.sort(key=lambda r: (max(r), min(r)), reverse=True)
     return rings
 
 def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
@@ -322,7 +332,7 @@ def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
         pass  # Kekulization may fail for some molecules
     return MolToSmiles(mol_kek, kekuleSmiles=True, isomericSmiles=True)
 
-def get_hybridization_indices(mol: Any) -> list[list[int]]:
+def get_hybridization_indices(mol: Any) -> list[set[int]]:
     """
     Return atom indices for sp3, sp2, and sp hybridization in the molecule.
     Each list is sorted in descending order.
@@ -331,7 +341,7 @@ def get_hybridization_indices(mol: Any) -> list[list[int]]:
     :return: Dict with keys 'sp3', 'sp2', 'sp' and values as lists of atom indices (sorted descending)
     """
     if mol is None:
-        return [[], [], []]
+        return [set(), set(), set()]
     from rdkit.Chem.rdchem import HybridizationType
     sp3 = []
     sp2 = []
@@ -346,12 +356,12 @@ def get_hybridization_indices(mol: Any) -> list[list[int]]:
         elif hyb == HybridizationType.SP:
             sp.append(idx)
     return [
-        sorted(sp3, reverse=True),
-        sorted(sp2, reverse=True),
-        sorted(sp, reverse=True)
-        ]
+        set(sp3),
+        set(sp2),
+        set(sp)
+    ]
 
-def get_element_atom_indices(mol: Any) -> list[list[int]]:
+def get_element_atom_indices(mol: Any) -> list[set[Any]]:
     """
     Return lists of atom indices for C, N, O, P, S, Cl, F in the molecule.
     Each list is sorted in descending order.
@@ -360,7 +370,7 @@ def get_element_atom_indices(mol: Any) -> list[list[int]]:
     :return: List of lists: [C, N, O, P, S, Cl, F] atom indices
     """
     if mol is None:
-        return [[] for _ in range(7)]
+        return [set() for _ in range(7)]
     elements = ['C', 'N', 'O', 'P', 'S', 'Cl', 'F']
     indices = [[] for _ in elements]
     for atom in mol.GetAtoms():
@@ -369,7 +379,7 @@ def get_element_atom_indices(mol: Any) -> list[list[int]]:
         for i, el in enumerate(elements):
             if symbol == el:
                 indices[i].append(idx)
-    return [sorted(lst, reverse=True) for lst in indices]
+    return [set(lst) for lst in indices]
 
 def get_bond_counts(mol: Any) -> list[int]:
     """
@@ -512,8 +522,9 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         "stereocenter_count": [],
         "heavy_atom_count": [],
 #        "non_hydrogen_bond_count": [],
-        "positive_formal_charge_count": [],
-        "negative_formal_charge_count": [],
+#        "positive_formal_charge_count": [],
+#        "negative_formal_charge_count": [],
+        "net_formal_charge": [],
         # New functions
         "sorted_rings": [],
         "kekulized_smiles": [],
@@ -555,8 +566,9 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         properties["stereocenter_count"].append(count_stereocenters(mol))
         properties["heavy_atom_count"].append(count_heavy_atoms(mol))
 #        properties["non_hydrogen_bond_count"].append(count_non_hydrogen_bonds(mol))
-        properties["positive_formal_charge_count"].append(count_positive_formal_charge_atoms(mol))
-        properties["negative_formal_charge_count"].append(count_negative_formal_charge_atoms(mol))
+#        properties["positive_formal_charge_count"].append(count_positive_formal_charge_atoms(mol))
+#        properties["negative_formal_charge_count"].append(count_negative_formal_charge_atoms(mol))
+        properties["net_formal_charge"].append(get_net_formal_charge(mol))
         properties["sorted_rings"].append(sorted_rings(mol))
         properties["kekulized_smiles"].append(kekulized_smiles(mol))
         properties["kekulized_smiles_atom_map"].append(kekulized_smiles(mol, atom_map=True))
@@ -567,54 +579,3 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         properties["stereo_summary"].append(get_stereo_summary(mol))
 
     return properties
-
-def smiles_with_ring_atom_classes(mol: Any) -> str:
-    """
-    Return a SMILES string where each atom's atom class is set to the ring index (or indices) if the atom is in a ring.
-    If an atom is in multiple rings, the atom class is a concatenation of all ring indices (in increasing order).
-    If a ring index is two digits, prepend it with a % sign (e.g., %10).
-    Atoms not in any ring have no atom class.
-    This is done by first setting atom map numbers to atom index + 1, generating the SMILES, then using regex to replace
-    [C:idx] with [C:class] where class is the ring index string as described above.
-
-    :param mol: RDKit molecule object
-    :return: SMILES string with atom classes encoding ring membership
-    """
-    import copy
-    import re
-    mol = copy.deepcopy(mol)
-    ring_info = mol.GetRingInfo()
-    atom_rings = ring_info.AtomRings()  # tuple of atom idxs for each ring
-    # Build a mapping: atom idx -> list of ring indices
-    atom_to_rings = {i: [] for i in range(mol.GetNumAtoms())}
-    for ring_idx, ring in enumerate(atom_rings):
-        for atom_idx in ring:
-            atom_to_rings[atom_idx].append(ring_idx)
-    # Set atom map number for each atom to atom index + 1
-    for atom in mol.GetAtoms():
-        atom.SetAtomMapNum(atom.GetIdx() + 1)
-    # Generate SMILES with atom map numbers
-    smiles = Chem.MolToSmiles(mol, isomericSmiles=True)
-    # Regex to find [X:idx] and replace with [X:class]
-    def ring_class_str(rings):
-        s = ''
-        for r in sorted(rings):
-            ring_label = r + 1  # Use ring index + 1
-            if ring_label >= 10:
-                s += f'%{ring_label}'
-            else:
-                s += str(ring_label)
-        return s
-    def replace_atom(match):
-        atom = match.group(1)
-        idx = int(match.group(2)) - 1  # atom map idx is atom index + 1
-        rings = atom_to_rings.get(idx, [])
-        if rings:
-            cls = ring_class_str(rings)
-            return f'[{atom}:{cls}]'
-        else:
-            return f'[{atom}]'
-    # Replace all [X:idx] with [X:class] or [X] if not in ring
-    smiles = re.sub(r'\[([^\]:]+):(\d+)\]', replace_atom, smiles)
-    return smiles
-

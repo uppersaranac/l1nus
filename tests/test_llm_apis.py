@@ -12,7 +12,8 @@ from llm.llm_apis import (
     IUPACNamingProcessor, MolecularPropertiesProcessor, AllPropertiesProcessor
 )
 from llm.llm_mol import (
-    count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms
+    count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
+    get_net_formal_charge
 )
 
 
@@ -22,7 +23,7 @@ def test_sorted_rings_basic():
     mol = Chem.MolFromSmiles('C1CCCCC1')
     rings = sorted_rings(mol)
     assert len(rings) == 1
-    assert sorted(rings[0], reverse=True) == [5, 4, 3, 2, 1, 0]
+    assert {5, 4, 3, 2, 1, 0} in rings
 
 def test_kekulized_smiles_basic():
     from rdkit import Chem
@@ -41,7 +42,7 @@ def test_get_hybridization_indices_basic():
     assert isinstance(hyb, list)
     assert len(hyb) == 3
     # sp3, sp2, sp
-    assert any(isinstance(x, list) for x in hyb)
+    assert any(isinstance(x, set) for x in hyb)
 
 def test_get_element_atom_indices_basic():
     from rdkit import Chem
@@ -453,12 +454,23 @@ def test_count_negative_formal_charge_atoms():
     assert count_negative_formal_charge_atoms(Chem.MolFromSmiles("[O-][N+](=O)O")) == 1  # nitrite anion
     assert count_negative_formal_charge_atoms(Chem.MolFromSmiles("CCO")) == 0
 
+def test_get_net_formal_charge():
+    # Test neutral molecule
+    assert get_net_formal_charge(Chem.MolFromSmiles("CCO")) == 0
+    # Test positive ion
+    assert get_net_formal_charge(Chem.MolFromSmiles("[NH4+]")) == 1
+    # Test negative ion
+    assert get_net_formal_charge(Chem.MolFromSmiles("[OH-]")) == -1
+    # Test zwitterion (net charge 0)
+    assert get_net_formal_charge(Chem.MolFromSmiles("C[NH3+]C(=O)[O-]")) == 0
+    # Test molecule with both positive and negative charges (net negative)
+    assert get_net_formal_charge(Chem.MolFromSmiles("[O-][N+](=O)O")) == 0  # nitrite anion with formal charges
+
 def test_calculate_molecular_properties():
     smiles = ["CCO", "[NH4+]"]
     props = calculate_molecular_properties(smiles)
     assert props["heavy_atom_count"] == [3, 1]
-    assert props["positive_formal_charge_count"] == [0, 1]
-    assert props["negative_formal_charge_count"] == [0, 0]
+    assert props["net_formal_charge"] == [0, 1]
     # Check new stereo_summary output
     assert props["stereo_summary"][0][0] == 0  # CCO: no stereocenter
     assert props["stereo_summary"][0][1] == 0  # CCO: no stereo bond
