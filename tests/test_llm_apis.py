@@ -13,21 +13,18 @@ from llm.llm_apis import (
 )
 from llm.llm_mol import (
     count_heavy_atoms, count_non_hydrogen_bonds, count_positive_formal_charge_atoms, count_negative_formal_charge_atoms,
-    get_net_formal_charge
+    get_net_formal_charge, sorted_rings, kekulized_smiles, get_hybridization_indices, get_element_counts,
+    get_bond_counts, get_ring_counts
 )
 
 
 def test_sorted_rings_basic():
-    from rdkit import Chem
-    from src.llm.llm_mol import sorted_rings
     mol = Chem.MolFromSmiles('C1CCCCC1')
     rings = sorted_rings(mol)
     assert len(rings) == 1
     assert {5, 4, 3, 2, 1, 0} in rings
 
 def test_kekulized_smiles_basic():
-    from rdkit import Chem
-    from src.llm.llm_mol import kekulized_smiles
     mol = Chem.MolFromSmiles('c1ccccc1')
     kek = kekulized_smiles(mol)
     assert isinstance(kek, str)
@@ -35,8 +32,6 @@ def test_kekulized_smiles_basic():
     assert '[' in kek_map and ':' in kek_map  # Atom map numbers present
 
 def test_get_hybridization_indices_basic():
-    from rdkit import Chem
-    from src.llm.llm_mol import get_hybridization_indices
     mol = Chem.MolFromSmiles('CC=C')
     hyb = get_hybridization_indices(mol)
     assert isinstance(hyb, list)
@@ -44,19 +39,12 @@ def test_get_hybridization_indices_basic():
     # sp3, sp2, sp
     assert any(isinstance(x, set) for x in hyb)
 
-def test_get_element_atom_indices_basic():
-    from rdkit import Chem
-    from src.llm.llm_mol import get_element_atom_indices
+def test_get_element_counts_basic():
     mol = Chem.MolFromSmiles('FCNOPSCl')
-    indices = get_element_atom_indices(mol)
+    indices = get_element_counts(mol)
     assert len(indices) == 7
-    # Each element should have one atom index
-    for lst in indices:
-        assert len(lst) == 1
 
 def test_get_bond_counts_basic():
-    from rdkit import Chem
-    from src.llm.llm_mol import get_bond_counts
     mol = Chem.MolFromSmiles('CC#N')
     counts = get_bond_counts(mol)
     assert isinstance(counts, list)
@@ -65,8 +53,6 @@ def test_get_bond_counts_basic():
     assert counts[2] == 1  # One triple bond
 
 def test_get_ring_counts_basic():
-    from rdkit import Chem
-    from src.llm.llm_mol import get_ring_counts
     mol = Chem.MolFromSmiles('c1ccccc1')
     counts = get_ring_counts(mol)
     assert isinstance(counts, list)
