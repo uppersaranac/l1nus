@@ -552,7 +552,7 @@ def _norm_tagged(s: str, tokenizer: Any = None) -> str:
     return s.strip()
 
 
-def compute_metrics_closure(tokenizer: Any, compare: str) -> Callable[[Any], Any]:
+def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
     """
     Compute metrics closure.
 
