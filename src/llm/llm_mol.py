@@ -289,6 +289,7 @@ def longest_chain(mol: Any) -> set[int]:
         if not is_carbon(atom) or atom.GetIdx() in ring_atoms:
             continue
         candidate = dfs(atom.GetIdx(), {atom.GetIdx()}, set(), [atom.GetIdx()])
+        candidate = [idx + 1 for idx in candidate]  # Convert to 1-based indexing
         if len(candidate) > len(longest_chain):
             longest_chain = candidate
     return set(longest_chain)
@@ -347,7 +348,7 @@ def get_hybridization_indices(mol: Any) -> list[set[int]]:
     sp2 = []
     sp = []
     for atom in mol.GetAtoms():
-        idx = atom.GetIdx()
+        idx = atom.GetIdx() + 1 # Use 1-based indexing for consistency with atom maps
         hyb = atom.GetHybridization()
         if hyb == HybridizationType.SP3:
             sp3.append(idx)
@@ -361,7 +362,7 @@ def get_hybridization_indices(mol: Any) -> list[set[int]]:
         set(sp)
     ]
 
-def get_element_counts(mol: Any) -> list[int]:
+def get_element_counts(mol: Any) -> list[Any]:
     """
     Return lists of atom counts for C, N, O, P, S, Cl, F in the molecule.
 
