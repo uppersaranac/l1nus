@@ -6,7 +6,7 @@ All functions in this file are documented and use type hints.
 from typing import Any, Sequence
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
-
+import logging
 
 def count_heavy_atoms(mol: Any) -> int:
     """
@@ -330,7 +330,9 @@ def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
     try:
         Kekulize(mol_kek, clearAromaticFlags=True)
     except Exception:
-        pass  # Kekulization may fail for some molecules
+        result = MolToSmiles(mol, isomericSmiles=True)
+        logging.warning(f"Kekulization failed for molecule {result}, returning non-kekulized SMILES")
+        return result
     return MolToSmiles(mol_kek, kekuleSmiles=True, isomericSmiles=True)
 
 def get_hybridization_indices(mol: Any) -> list[set[int]]:
