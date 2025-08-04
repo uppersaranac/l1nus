@@ -11,8 +11,8 @@ import torch
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Run LLM chatbot")
 parser.add_argument("--model_name", type=str, default="Qwen/Qwen3-1.7B", help="Local path or Hub model name (default: Qwen/Qwen3-4B)")
-parser.add_argument("--disable_thinking", action="store_true", help="Disable model thinking mode (only works with models that support it like Qwen3)")
-parser.add_argument("--no_history", action="store_true", help="Disable conversation history (treat each question independently)")
+parser.add_argument("--thinking", action="store_true", help="Enable model thinking mode (only works with models that support it like Qwen3)")
+parser.add_argument("--history", action="store_true", help="Enable conversation history (treat each question independently if not set)")
 parser.add_argument("--system_prompt", type=str, default=None, help="Custom system prompt to use for the conversation")
 parser.add_argument("--max_new_tokens", type=int, default=1024, help="Maximum number of new tokens to generate")
 parser.add_argument("--repetition_penalty", type=float, default=1.1, help="Repetition penalty for generation")
@@ -45,11 +45,11 @@ pipe = pipeline(
 # Step 2: Define a function to interact with the chatbot
 def interact_with_chatbot(user_input, conversation_history):
     # Step 2.1: Add user input to the conversation history (if history is enabled)
-    if not args.no_history:
+    if args.history:
         conversation_history.append(f"User: {user_input}")
     
     # Step 2.2: Prepare the input text for the model
-    if args.no_history:
+    if not args.history:
         # If history is disabled, only use the current question
         conversation_text = user_input
     else:
@@ -66,7 +66,6 @@ def interact_with_chatbot(user_input, conversation_history):
 
     messages = [
         {"role": "system", "content": system_content},
-#        {"role": "system", "content": "Do not think. Place the answer between <|extra_100|> and <|extra_101|>.  The answer should be a number."},
         {"role": "user", "content": conversation_text},
     ]
     
@@ -76,13 +75,13 @@ def interact_with_chatbot(user_input, conversation_history):
     # For models that support the enable_thinking parameter (like Qwen3)
     # We need to check if the tokenizer has the apply_chat_template method and if it accepts enable_thinking
     if hasattr(tokenizer, 'apply_chat_template'):
-        print("Disable thinking flag:", args.disable_thinking)
+        print("Thinking flag:", args.thinking)
         # Apply chat template with thinking mode controlled by command-line argument
         text = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
-            enable_thinking=not args.disable_thinking  # Disable thinking if --disable_thinking is set
+            enable_thinking=args.thinking  # Enable thinking if --thinking is set
         )
         model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
         
@@ -116,7 +115,7 @@ def interact_with_chatbot(user_input, conversation_history):
         response_text = tokenizer.decode(output_ids[index:]).strip("\n")
         
         # Optionally print thinking content for debugging
-        if index > 0 and not args.disable_thinking:
+        if index > 0 and args.thinking:
             thinking_content = tokenizer.decode(output_ids[:index], skip_special_tokens=True).strip("\n")
             print("Model thinking process:", thinking_content)
     else:

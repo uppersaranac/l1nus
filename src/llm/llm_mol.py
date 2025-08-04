@@ -361,13 +361,12 @@ def get_hybridization_indices(mol: Any) -> list[set[int]]:
         set(sp)
     ]
 
-def get_element_atom_indices(mol: Any) -> list[set[Any]]:
+def get_element_counts(mol: Any) -> list[int]:
     """
-    Return lists of atom indices for C, N, O, P, S, Cl, F in the molecule.
-    Each list is sorted in descending order.
+    Return lists of atom counts for C, N, O, P, S, Cl, F in the molecule.
 
     :param mol: RDKit molecule object
-    :return: List of lists: [C, N, O, P, S, Cl, F] atom indices
+    :return: List of ints: [C, N, O, P, S, Cl, F]
     """
     if mol is None:
         return [set() for _ in range(7)]
@@ -379,7 +378,7 @@ def get_element_atom_indices(mol: Any) -> list[set[Any]]:
         for i, el in enumerate(elements):
             if symbol == el:
                 indices[i].append(idx)
-    return [set(lst) for lst in indices]
+    return [len(lst) for lst in indices]
 
 def get_bond_counts(mol: Any) -> list[int]:
     """
@@ -530,7 +529,7 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         "kekulized_smiles": [],
         "kekulized_smiles_atom_map": [],
         "hybridization_indices": [],
-        "element_atom_indices": [],
+        "element_counts": [],
         "bond_counts": [],
         "ring_counts": [],
         "stereo_summary": [],
@@ -573,7 +572,7 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         properties["kekulized_smiles"].append(kekulized_smiles(mol))
         properties["kekulized_smiles_atom_map"].append(kekulized_smiles(mol, atom_map=True))
         properties["hybridization_indices"].append(get_hybridization_indices(mol))
-        properties["element_atom_indices"].append(get_element_atom_indices(mol))
+        properties["element_counts"].append(get_element_counts(mol))
         properties["bond_counts"].append(get_bond_counts(mol))
         properties["ring_counts"].append(get_ring_counts(mol))
         properties["stereo_summary"].append(get_stereo_summary(mol))

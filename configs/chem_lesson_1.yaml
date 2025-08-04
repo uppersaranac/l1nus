@@ -1,7 +1,7 @@
 # Configuration for molecular property counting questions
 system_prompt: "You are a chemist. Place answers in <answer> tags. Do not explain. "
 
-question_set: chem_lesson_1
+question_set: molecular_properties
 
 questions:
   - id: repeat_smiles
