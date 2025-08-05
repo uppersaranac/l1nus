@@ -50,7 +50,7 @@ def analyze_padding_tokens(input_ids: List[List[int]], pad_token_id: int) -> Dic
     for arr in input_ids.iterchunks(): # type: ignore[attr-defined]
         for row in arr:
             # row: pyarrow Array
-            eq_mask = pc.equal(row, pad_token_id)
+            eq_mask = pc.equal(row.values, pad_token_id)
             count = pc.sum(eq_mask).as_py()
             pad_counts.append(count)
     min_val = min(pad_counts) if pad_counts else 0
@@ -74,7 +74,7 @@ def analyze_label_masks(labels: List[List[int]]) -> Dict[str, float]:
     mask_counts = []
     for arr in labels.iterchunks():  # type: ignore[attr-defined]
         for row in arr:
-            eq_mask = pc.equal(row, -100)
+            eq_mask = pc.equal(row.values, -100)
             count = pc.sum(eq_mask).as_py()
             mask_counts.append(count)
     min_val = min(mask_counts) if mask_counts else 0
