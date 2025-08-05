@@ -5,8 +5,9 @@ All functions in this file are documented and use type hints.
 """
 from typing import Any, Sequence
 from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import rdMolDescriptors, Kekulize, MolToSmiles
 import logging
+import copy
 
 def count_heavy_atoms(mol: Any) -> int:
     """
@@ -318,8 +319,6 @@ def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
     """
     if mol is None:
         return ""
-    from rdkit.Chem import Kekulize, MolToSmiles
-    import copy
     mol_kek = copy.deepcopy(mol)
     if atom_map:
         for atom in mol_kek.GetAtoms():
@@ -392,10 +391,17 @@ def get_bond_counts(mol: Any) -> list[int]:
     """
     if mol is None:
         return [0, 0, 0]
-    total_bonds = mol.GetNumBonds()
+    mol_kek = copy.deepcopy(mol)
+    try:
+        Kekulize(mol_kek, clearAromaticFlags=True)
+    except Exception:
+        logging.warning(f"Kekulization failed for molecule {MolToSmiles(mol)}, returning non-kekulized bond counts")
+        pass
+
+    total_bonds = mol_kek.GetNumBonds()
     double_bonds = 0
     triple_bonds = 0
-    for bond in mol.GetBonds():
+    for bond in mol_kek.GetBonds():
         if bond.GetBondType() == Chem.rdchem.BondType.DOUBLE:
             double_bonds += 1
         elif bond.GetBondType() == Chem.rdchem.BondType.TRIPLE:
@@ -516,12 +522,11 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
 #        "saturated_heterocycle_count": [],
 #        "saturated_carbocycle_count": [],
         "longest_chain": [],
-#        "hydrogen_count": [],
+        "hydrogen_count": [],
 #        "fused_ring_count": [],
 #        "double_bond_count": [],
 #        "triple_bond_count": [],
 #        "stereo_double_bond_count": [],
-        "stereocenter_count": [],
         "heavy_atom_count": [],
 #        "non_hydrogen_bond_count": [],
 #        "positive_formal_charge_count": [],
@@ -554,7 +559,7 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
 #        properties["six_membered_ring_count"].append(count_six_membered_rings(mol))
 #        properties["aromatic_six_membered_ring_count"].append(count_aromatic_six_membered_rings(mol))
         properties["longest_chain"].append(longest_chain(mol))
-#        properties["hydrogen_count"].append(count_total_hydrogens(mol))
+        properties["hydrogen_count"].append(count_total_hydrogens(mol))
 #        properties["fused_ring_count"].append(count_fused_rings(mol))
 #        properties["aromatic_heterocycle_count"].append(count_aromatic_heterocycles(mol))
 #        properties["aromatic_carbocycle_count"].append(count_aromatic_carbocycles(mol))
@@ -565,7 +570,6 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
 #        properties["double_bond_count"].append(count_double_bonds(mol))
 #        properties["triple_bond_count"].append(count_triple_bonds(mol))
 #        properties["stereo_double_bond_count"].append(count_stereo_double_bonds(mol))
-        properties["stereocenter_count"].append(count_stereocenters(mol))
         properties["heavy_atom_count"].append(count_heavy_atoms(mol))
 #        properties["non_hydrogen_bond_count"].append(count_non_hydrogen_bonds(mol))
 #        properties["positive_formal_charge_count"].append(count_positive_formal_charge_atoms(mol))
