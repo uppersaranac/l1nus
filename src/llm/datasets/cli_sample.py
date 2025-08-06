@@ -14,7 +14,6 @@ import logging
 import numpy as np
 from pathlib import Path
 from typing import Dict, List
-import pyarrow.compute as pc
 
 from datasets import DatasetDict, load_from_disk
 from transformers import AutoTokenizer
@@ -45,13 +44,18 @@ def analyze_padding_tokens(input_ids: List[List[int]], pad_token_id: int) -> Dic
     :return: Dictionary with min, max, mean padding token counts
     """
     # input_ids: pyarrow.ChunkedArray of lists
-    # Compare each value to pad_token_id
-    eq_mask = pc.equal(input_ids, pad_token_id)
-    # eq_mask: ChunkedArray of lists of bools
-    pad_counts = pc.list_sum(eq_mask)
-    min_val = pc.min(pad_counts).as_py() if pad_counts else 0
-    max_val = pc.max(pad_counts).as_py() if pad_counts else 0
-    mean_val = pc.mean(pad_counts).as_py() if pad_counts else 0.0
+    # Count pad_token_id matches row by row
+    import pyarrow.compute as pc
+    pad_counts = []
+    for arr in input_ids.iterchunks(): # type: ignore[attr-defined]
+        for row in arr:
+            # row: pyarrow Array
+            eq_mask = pc.equal(row.values, pad_token_id)  # type: ignore[attr-defined]
+            count = pc.sum(eq_mask).as_py()  # type: ignore[attr-defined]
+            pad_counts.append(count)
+    min_val = min(pad_counts) if pad_counts else 0
+    max_val = max(pad_counts) if pad_counts else 0
+    mean_val = float(sum(pad_counts)) / len(pad_counts) if pad_counts else 0.0
     return {
         "min": float(min_val),
         "max": float(max_val),
@@ -65,11 +69,17 @@ def analyze_label_masks(labels: List[List[int]]) -> Dict[str, float]:
     :param labels: pyarrow.ChunkedArray of label sequences
     :return: Dictionary with min, max, mean -100 counts
     """
-    eq_mask = pc.equal(labels, -100)
-    mask_counts = pc.list_sum(eq_mask)
-    min_val = pc.min(mask_counts).as_py() if mask_counts else 0
-    max_val = pc.max(mask_counts).as_py() if mask_counts else 0
-    mean_val = pc.mean(mask_counts).as_py() if mask_counts else 0.0
+    # Count -100 matches row by row
+    import pyarrow.compute as pc
+    mask_counts = []
+    for arr in labels.iterchunks():  # type: ignore[attr-defined]
+        for row in arr:
+            eq_mask = pc.equal(row.values, -100)  # type: ignore[attr-defined]
+            count = pc.sum(eq_mask).as_py()  # type: ignore[attr-defined]
+            mask_counts.append(count)
+    min_val = min(mask_counts) if mask_counts else 0
+    max_val = max(mask_counts) if mask_counts else 0
+    mean_val = float(sum(mask_counts)) / len(mask_counts) if mask_counts else 0.0
     return {
         "min": float(min_val),
         "max": float(max_val),
@@ -92,7 +102,7 @@ def decode_labels_skip_mask(tokenizer: AutoTokenizer, labels: List[int]) -> str:
         return "[No valid labels]"
     
     try:
-        return tokenizer.decode(filtered_labels, skip_special_tokens=True)
+        return tokenizer.decode(filtered_labels, skip_special_tokens=True)  # type: ignore[attr-defined]
     except Exception as e:
         logger.warning("Failed to decode labels: %s", e)
         return f"[Decode error: {e}]"
@@ -129,7 +139,7 @@ def sample_and_decode_examples(dataset, tokenizer: AutoTokenizer, num_examples: 
         
         # Decode input_ids
         if "input_ids" in example:
-            input_text = tokenizer.decode(example["input_ids"], skip_special_tokens=True)
+            input_text = tokenizer.decode(example["input_ids"], skip_special_tokens=True) # type: ignore[attr-defined]
             logger.info("INPUT: %s", input_text)
         
         # Decode labels (skipping -100)
@@ -155,8 +165,8 @@ def analyze_dataset(dataset, tokenizer: AutoTokenizer, dataset_name: str) -> Non
     # Analyze input_ids for padding
     if "input_ids" in dataset.column_names:
         input_ids_arr = dataset.data.column("input_ids")
-        padding_stats = analyze_padding_tokens(input_ids_arr, tokenizer.pad_token_id)
-        logger.info("Padding token statistics (pad_token_id=%d):", tokenizer.pad_token_id)
+        padding_stats = analyze_padding_tokens(input_ids_arr, tokenizer.pad_token_id) # type: ignore[attr-defined]
+        logger.info("Padding token statistics (pad_token_id=%d):", tokenizer.pad_token_id) # type: ignore[attr-defined]
         logger.info("  Min padding tokens per row: %.1f", padding_stats["min"])
         logger.info("  Max padding tokens per row: %.1f", padding_stats["max"])
         logger.info("  Mean padding tokens per row: %.1f", padding_stats["mean"])
