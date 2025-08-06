@@ -42,11 +42,11 @@ class StructureProcessor(QuestionSetProcessor):
     def _noncanonical_smiles(mol: Chem.Mol, original: str) -> str:
         """Return a *randomised* SMILES that is not exactly the original string."""
         for _ in range(12):  # a few attempts should suffice
-            rnd = Chem.MolToSmiles(mol, doRandom=True)
+            rnd = Chem.MolToSmiles(mol, doRandom=True, kekuleSmiles=True)
             if rnd != original:
                 return rnd
         # Fallback (unlikely) – return canonical representation
-        return Chem.MolToSmiles(mol, canonical=True)
+        return Chem.MolToSmiles(mol, canonical=True, kekuleSmiles=True)
 
     # ---------------------------------------------------------------------
     # Main public API
@@ -63,15 +63,12 @@ class StructureProcessor(QuestionSetProcessor):
         smiles_filtered = []
         for s, f in zip(smiles_col, formulas_all):
             mol = Chem.MolFromSmiles(s)
-            if mol is None:
-                mols.append(None)
-                formulas.append(None)
-                key_prefixes.append(None)
-                smiles_filtered.append(None)
-                continue
             try:
+                Chem.Kekulize(mol, clearAromaticFlags=True)
                 key_prefix = Chem.MolToInchiKey(mol).split("-")[0]
             except Exception:
+                mol = None
+            if mol is None:
                 mols.append(None)
                 formulas.append(None)
                 key_prefixes.append(None)
@@ -80,7 +77,7 @@ class StructureProcessor(QuestionSetProcessor):
             mols.append(mol)
             formulas.append(f)
             key_prefixes.append(key_prefix)
-            smiles_filtered.append(s)
+            smiles_filtered.append(Chem.MolToSmiles(mol, canonical=True, kekuleSmiles=True))
         # If needed, replace smiles_col with smiles_filtered below for further processing
 
         # Build mapping formula → list[indices]
@@ -91,6 +88,7 @@ class StructureProcessor(QuestionSetProcessor):
             formula_to_indices.setdefault(formula, []).append(idx)
 
         # Prepare output arrays
+        kekulized_smiles: List[str] = []
         smiles_A: List[str] = []
         smiles_B: List[str] = []
         smiles_C: List[str] = []
@@ -104,6 +102,7 @@ class StructureProcessor(QuestionSetProcessor):
         for i in range(n):
 
             if mols[i] is None:
+                kekulized_smiles.append("")
                 smiles_A.append("")
                 smiles_B.append("")
                 smiles_C.append("")
@@ -116,6 +115,7 @@ class StructureProcessor(QuestionSetProcessor):
             candidates = [j for j in formula_to_indices.get(formulas[i], []) if j != i and key_prefixes[j] != key_prefixes[i]]
 
             if not candidates:
+                kekulized_smiles.append("")
                 smiles_A.append("")
                 smiles_B.append("")
                 smiles_C.append("")
@@ -127,17 +127,16 @@ class StructureProcessor(QuestionSetProcessor):
             # If <3 unique candidates, sample with replacement to reach 3
             if len(candidates) >= 3:
                 decoy_indices = rng.sample(candidates, 3)
-                decoy_smiles = [smiles_col[j] for j in decoy_indices]
+                decoy_smiles = [smiles_filtered[j] for j in decoy_indices]
             else:
                 # Use all available candidates first
                 decoy_indices = list(candidates)
-                decoy_smiles = [smiles_col[j] for j in decoy_indices]
+                decoy_smiles = [smiles_filtered[j] for j in decoy_indices]
                 # Generate additional decoys using _noncanonical_smiles
                 while len(decoy_smiles) < 3:
                     idx = rng.choice(candidates)
                     mol = mols[idx]
-                    orig_smiles = smiles_col[idx]
-                    new_smiles = self._noncanonical_smiles(mol, orig_smiles)
+                    new_smiles = self._noncanonical_smiles(mol, smiles_filtered[idx])
                     decoy_smiles.append(new_smiles)
 
             # Randomised correct SMILES representation
@@ -148,6 +147,7 @@ class StructureProcessor(QuestionSetProcessor):
             correct_idx = choices.index(correct_smiles)
 
             # Append to output lists
+            kekulized_smiles.append(smiles_filtered[i])
             smiles_A.append(choices[0])
             smiles_B.append(choices[1])
             smiles_C.append(choices[2])
@@ -156,6 +156,7 @@ class StructureProcessor(QuestionSetProcessor):
             mask.append(True)
 
         return {
+            "kekulized_smiles": kekulized_smiles,
             "smiles_A": smiles_A,
             "smiles_B": smiles_B,
             "smiles_C": smiles_C,

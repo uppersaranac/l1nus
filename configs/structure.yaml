@@ -5,7 +5,7 @@ question_set: structure
 
 questions:
   - id: isomers
-    user_template: "Which of the following structures is identical to {smiles}?\n\nA. {smiles_A}\nB. {smiles_B}\nC. {smiles_C}\nD. {smiles_D}\n\n"
+    user_template: "Which of the following structures is identical to {kekulized_smiles}?\n\nA. {smiles_A}\nB. {smiles_B}\nC. {smiles_C}\nD. {smiles_D}\n\n"
     assistant_template: "The identical structure is <answer>{isomer_answer}</answer>\n"
 #  - id: stereochemistry
 #    user_template: "Which of the following structures is a stereoisomer of {smiles}?\n\nA. {smiles_A}\nB. {smiles_B}\nC. {smiles_C}\nD. {smiles_D}\n\n"

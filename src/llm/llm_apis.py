@@ -331,6 +331,8 @@ def process_single_qa(
         "input_ids": input_ids,
         "attention_mask": attention_mask
     }
+
+    # create labels and position weights
     
     if is_train:
         # For training: find the answer span in the prompt
@@ -376,8 +378,8 @@ def process_single_qa(
         ans_enc = tok(formatted_answer, truncation=True, add_special_tokens=False, max_length=max_label_len, return_tensors="np")
         answer = ans_enc["input_ids"].tolist()[0]
         
-        label = [-100] * max_len
-        label[-len(answer):] = answer[-max_len:]
+        label = [-100] * max_label_len
+        label[-len(answer):] = answer[-max_label_len:]
         processed_example["labels"] = label  # Assign 1D list directly
     
     return processed_example
