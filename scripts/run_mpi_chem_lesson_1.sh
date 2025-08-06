@@ -27,7 +27,7 @@ export LAUNCHER="accelerate launch \
 export SCRIPT="../src/llm/training/cli_train.py"
 
 export ARGS="--limit 0 \
---output_dir ~/results/$SLURM_JOB_ID \
+--output_dir ~/results/${SLURM_JOB_NAME}_${SLURM_JOB_ID} \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 2 \
 --gradient_accumulation_steps 8 \
