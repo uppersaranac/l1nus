@@ -1,0 +1,9 @@
+# Configuration for molecular property counting questions
+system_prompt: "You are a chemist. Place answers in <answer> tags. Do not explain. "
+
+question_set: molecular_properties
+
+questions:
+  - id: ring_counts
+    user_template: "What are the number of rings, aromatic rings, 5-membered rings, and 6-membered rings in the molecule {kekulized_smiles}? The answer should be a list.\n"
+    assistant_template: "The number of rings, aromatic rings, 5-membered rings, and 6-membered rings is <answer>{ring_counts}</answer>\n"

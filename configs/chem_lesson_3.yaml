@@ -1,0 +1,12 @@
+# Configuration for molecular property counting questions
+system_prompt: "You are a chemist. Place answers in <answer> tags. Do not explain. "
+
+question_set: molecular_properties
+
+questions:
+  - id: sorted_rings
+    user_template: "What are the atom map numbers of the rings in the molecule {kekulized_smiles_atom_map}? The answer should be a list of sets. The list is sorted by the max atom map number and then the min atom map number of the ring.\n"
+    assistant_template: "The rings are <answer>{sorted_rings}</answer>\n"
+  - id: longest_chain
+    user_template: "What are the atom map numbers of the longest carbon chain in the molecule {kekulized_smiles_atom_map} where none of the carbons are in a ring? The answer should be a set.\n"
+    assistant_template: "The atom map numbers of the longest carbon chain are <answer>{longest_chain}</answer>\n"

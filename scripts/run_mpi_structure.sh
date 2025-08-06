@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J train_llm_mpi           # Job name
+#SBATCH -J structure           # Job name
 #SBATCH -t 36:00:00              # Wall time (1 hour)
 #SBATCH -N 8                    # Number of nodes
 #SBATCH -p gh                    # GPU partition (modify as needed)
@@ -27,13 +27,13 @@ export LAUNCHER="accelerate launch \
 export SCRIPT="../src/llm/training/cli_train.py"
 
 export ARGS="--limit 0 \
---output_dir ~/results/$SLURM_JOB_ID \
+--output_dir ~/results/${SLURM_JOB_NAME}_${SLURM_JOB_ID} \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 2 \
 --num_train_epochs 8 \
 --eval_steps 10000 \
 --eval_num_examples 64 \
---dataset_dir ~/data/pubchem/arrow/pubchem_best_cluster_structure \
+--dataset_dir ~/data/pubchem/arrow/structure \
 --model_name ~/results/252674 \
 "
 

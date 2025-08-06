@@ -5,5 +5,5 @@ question_set: iupac_naming
 
 questions:
   - id: iupac_name
-    user_template: "What is the IUPAC name for the molecule {smiles}?\n"
+    user_template: "What is the IUPAC name for the molecule {kekulized_smiles}?\n"
     assistant_template: "The IUPAC name is <answer>{iupac}</answer>\n"

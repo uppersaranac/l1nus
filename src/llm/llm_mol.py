@@ -307,6 +307,7 @@ def sorted_rings(mol: Any) -> list[set[int]]:
         return []
     rings = [set(ring) for ring in mol.GetRingInfo().AtomRings()]
     # Sort rings by max atom index (descending), then min atom index (descending)
+    rings.sort(key=lambda r: (max(r), min(r)))
     return rings
 
 def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
