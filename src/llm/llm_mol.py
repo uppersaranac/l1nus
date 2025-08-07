@@ -3,6 +3,7 @@ llm_mol.py: RDKit-dependent molecular property functions for l1nus
 
 All functions in this file are documented and use type hints.
 """
+import json
 from typing import Any, Sequence
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors, Kekulize, MolToSmiles
@@ -177,22 +178,22 @@ def count_stereocenters(mol: Any) -> int:
         return 0
     return rdMolDescriptors.CalcNumAtomStereoCenters(mol)
 
-def get_stereo_summary(mol: Any) -> list[int]:
+def get_stereo_summary(mol: Any) -> dict[str, int]:
     """
-    Return a list: [number of stereocenters, number of stereo bonds] for the molecule.
+    Return a dict with stereocenter and stereo bond counts for the molecule.
 
     :param mol: RDKit molecule object
-    :return: [stereocenter_count, stereo_bond_count]
+    :return: {"stereocenter_count": int, "stereo_bond_count": int}
     """
     if mol is None:
-        return [0, 0]
+        return {"stereocenter_count": 0, "stereo_bond_count": 0}
     stereocenter_count = rdMolDescriptors.CalcNumAtomStereoCenters(mol)
     stereo_bond_count = sum(
         1
         for bond in mol.GetBonds()
         if bond.GetBondType() == Chem.rdchem.BondType.DOUBLE and bond.GetStereo() in [Chem.rdchem.BondStereo.STEREOE, Chem.rdchem.BondStereo.STEREOZ]
     )
-    return [stereocenter_count, stereo_bond_count]
+    return {"stereocenter_count": stereocenter_count, "stereo_bond_count": stereo_bond_count}
 
 def count_five_membered_rings(mol: Any) -> int:
     """
@@ -246,15 +247,15 @@ def count_aromatic_six_membered_rings(mol: Any) -> int:
             count += 1
     return count
 
-def longest_chain(mol: Any) -> set[int]:
+def longest_chain(mol: Any) -> dict[str, Any]:
     """
-    Return the list of atom indices in the longest carbon chain in the molecule where none of the carbons are in a ring.
+    Return the atom indices in the longest carbon chain in the molecule where none of the carbons are in a ring.
 
     :param mol: RDKit molecule object
-    :return: List of atom indices in the longest chain
+    :return: {"atom_indices": list[int], "length": int}
     """
     if mol is None:
-        return set()
+        return {"longest_chain": []}
     ri = mol.GetRingInfo()
     ring_atoms = set()
     for ring in ri.AtomRings():
@@ -293,22 +294,23 @@ def longest_chain(mol: Any) -> set[int]:
         candidate = [idx + 1 for idx in candidate]  # Convert to 1-based indexing
         if len(candidate) > len(longest_chain):
             longest_chain = candidate
-    return set(longest_chain)
+    longest_chain = sorted(longest_chain)
+    return {"longest_chain": longest_chain}
 
-def sorted_rings(mol: Any) -> list[set[int]]:
+def sorted_rings(mol: Any) -> dict[str, Any]:
     """
     Return all rings in the molecule as lists of atom indices, sorted in descending order within each ring.
     The rings themselves are sorted by the max atom index (descending), then by min atom index (descending).
 
     :param mol: RDKit molecule object
-    :return: List of rings, each a list of atom indices (sorted descending)
+    :return: {"rings": list[list[int]], "count": int}
     """
     if mol is None:
-        return []
-    rings = [set(ring) for ring in mol.GetRingInfo().AtomRings()]
+        return {"rings": []}
+    rings = [sorted(list(ring)) for ring in mol.GetRingInfo().AtomRings()]
     # Sort rings by max atom index (descending), then min atom index (descending)
     rings.sort(key=lambda r: (max(r), min(r)))
-    return rings
+    return {"rings": rings}
 
 def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
     """
@@ -335,7 +337,7 @@ def kekulized_smiles(mol: Any, atom_map: bool = False) -> str:
         return result
     return MolToSmiles(mol_kek, kekuleSmiles=True, isomericSmiles=True)
 
-def get_hybridization_indices(mol: Any) -> list[set[int]]:
+def get_hybridization_indices(mol: Any) -> dict[str, list[int]]:
     """
     Return atom indices for sp3, sp2, and sp hybridization in the molecule.
     Each list is sorted in descending order.
@@ -344,7 +346,7 @@ def get_hybridization_indices(mol: Any) -> list[set[int]]:
     :return: Dict with keys 'sp3', 'sp2', 'sp' and values as lists of atom indices (sorted descending)
     """
     if mol is None:
-        return [set(), set(), set()]
+        return {"sp3": [], "sp2": [], "sp": []}
     from rdkit.Chem.rdchem import HybridizationType
     sp3 = []
     sp2 = []
@@ -358,40 +360,38 @@ def get_hybridization_indices(mol: Any) -> list[set[int]]:
             sp2.append(idx)
         elif hyb == HybridizationType.SP:
             sp.append(idx)
-    return [
-        set(sp3),
-        set(sp2),
-        set(sp)
-    ]
+    return {
+        "sp3": sorted(sp3),
+        "sp2": sorted(sp2),
+        "sp": sorted(sp)
+    }
 
-def get_element_counts(mol: Any) -> list[Any]:
+def get_element_counts(mol: Any) -> dict[str, int]:
     """
-    Return lists of atom counts for C, N, O, P, S, Cl, F in the molecule.
+    Return atom counts for C, N, O, P, S, Cl, F in the molecule.
 
     :param mol: RDKit molecule object
-    :return: List of ints: [C, N, O, P, S, Cl, F]
+    :return: Dict with element symbols as keys and counts as values
     """
     if mol is None:
-        return [set() for _ in range(7)]
+        return {"C": 0, "N": 0, "O": 0, "P": 0, "S": 0, "Cl": 0, "F": 0}
     elements = ['C', 'N', 'O', 'P', 'S', 'Cl', 'F']
-    indices = [[] for _ in elements]
+    counts = {el: 0 for el in elements}
     for atom in mol.GetAtoms():
         symbol = atom.GetSymbol()
-        idx = atom.GetIdx()
-        for i, el in enumerate(elements):
-            if symbol == el:
-                indices[i].append(idx)
-    return [len(lst) for lst in indices]
+        if symbol in counts:
+            counts[symbol] += 1
+    return counts
 
-def get_bond_counts(mol: Any) -> list[int]:
+def get_bond_counts(mol: Any) -> dict[str, int]:
     """
-    Return a list with total number of bonds (including to hydrogen), number of double bonds, and number of triple bonds.
+    Return bond counts for the molecule.
 
     :param mol: RDKit molecule object
-    :return: [total_bonds, double_bonds, triple_bonds]
+    :return: {"total_bonds": int, "double_bonds": int, "triple_bonds": int}
     """
     if mol is None:
-        return [0, 0, 0]
+        return {"total_bonds": 0, "double_bonds": 0, "triple_bonds": 0}
     mol_kek = copy.deepcopy(mol)
     try:
         Kekulize(mol_kek, clearAromaticFlags=True)
@@ -407,17 +407,17 @@ def get_bond_counts(mol: Any) -> list[int]:
             double_bonds += 1
         elif bond.GetBondType() == Chem.rdchem.BondType.TRIPLE:
             triple_bonds += 1
-    return [total_bonds, double_bonds, triple_bonds]
+    return {"total_bonds": total_bonds, "double_bonds": double_bonds, "triple_bonds": triple_bonds}
 
-def get_ring_counts(mol: Any) -> list[int]:
+def get_ring_counts(mol: Any) -> dict[str, int]:
     """
-    Return a list containing the number of: all rings, aromatic rings, 5-membered rings, 6-membered rings.
+    Return ring counts for the molecule.
 
     :param mol: RDKit molecule object
-    :return: [all_rings, aromatic_rings, five_membered_rings, six_membered_rings]
+    :return: {"total_rings": int, "aromatic_rings": int, "five_membered_rings": int, "six_membered_rings": int}
     """
     if mol is None:
-        return [0, 0, 0, 0]
+        return {"total_rings": 0, "aromatic_rings": 0, "five_membered_rings": 0, "six_membered_rings": 0}
     all_rings = rdMolDescriptors.CalcNumRings(mol)
     aromatic_rings = 0
     for ring in Chem.GetSymmSSSR(mol):
@@ -426,7 +426,12 @@ def get_ring_counts(mol: Any) -> list[int]:
             aromatic_rings += 1
     five_membered_rings = sum(1 for ring in Chem.GetSymmSSSR(mol) if len(ring) == 5)
     six_membered_rings = sum(1 for ring in Chem.GetSymmSSSR(mol) if len(ring) == 6)
-    return [all_rings, aromatic_rings, five_membered_rings, six_membered_rings]
+    return {
+        "total_rings": all_rings,
+        "aromatic_rings": aromatic_rings,
+        "five_membered_rings": five_membered_rings,
+        "six_membered_rings": six_membered_rings
+    }
 
 def count_total_hydrogens(mol: Any) -> int:
     """
@@ -573,7 +578,7 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
 #        properties["aromatic_five_membered_ring_count"].append(count_aromatic_five_membered_rings(mol))
 #        properties["six_membered_ring_count"].append(count_six_membered_rings(mol))
 #        properties["aromatic_six_membered_ring_count"].append(count_aromatic_six_membered_rings(mol))
-        properties["longest_chain"].append(longest_chain(mol))
+        properties["longest_chain"].append(json.dumps(longest_chain(mol)))
         properties["hydrogen_count"].append(count_total_hydrogens(mol))
 #        properties["fused_ring_count"].append(count_fused_rings(mol))
 #        properties["aromatic_heterocycle_count"].append(count_aromatic_heterocycles(mol))
@@ -590,14 +595,14 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
 #        properties["positive_formal_charge_count"].append(count_positive_formal_charge_atoms(mol))
 #        properties["negative_formal_charge_count"].append(count_negative_formal_charge_atoms(mol))
         properties["net_formal_charge"].append(get_net_formal_charge(mol))
-        properties["sorted_rings"].append(sorted_rings(mol))
+        properties["sorted_rings"].append(json.dumps(sorted_rings(mol)))
         properties["kekulized_smiles"].append(kekulized_smiles(mol))
         properties["kekulized_smiles_atom_map"].append(kekulized_smiles(mol, atom_map=True))
-        properties["hybridization_indices"].append(get_hybridization_indices(mol))
-        properties["element_counts"].append(get_element_counts(mol))
-        properties["bond_counts"].append(get_bond_counts(mol))
-        properties["ring_counts"].append(get_ring_counts(mol))
-        properties["stereo_summary"].append(get_stereo_summary(mol))
+        properties["hybridization_indices"].append(json.dumps(get_hybridization_indices(mol)))
+        properties["element_counts"].append(json.dumps(get_element_counts(mol)))
+        properties["bond_counts"].append(json.dumps(get_bond_counts(mol)))
+        properties["ring_counts"].append(json.dumps(get_ring_counts(mol)))
+        properties["stereo_summary"].append(json.dumps(get_stereo_summary(mol)))
         properties["molecular_formula"].append(get_molecular_formula(mol))
 
     return properties

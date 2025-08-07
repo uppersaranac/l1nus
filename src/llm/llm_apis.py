@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Callable
 
 import logging
@@ -610,12 +611,11 @@ def compute_metrics_closure(tokenizer: Any) -> Callable[[Any], Any]:
             for pred, label in zip(all_preds, all_labels):
                 is_match = False
                 
-                if label.startswith('[') or label.startswith('{'):
-                    # Handle Python literals
+                if label.startswith('{'):
+                    # Handle JSON objects
                     try:
-                        import ast
-                        label_obj = ast.literal_eval(label)
-                        pred_obj = ast.literal_eval(pred)
+                        label_obj = json.loads(label)
+                        pred_obj = json.loads(pred)
                         is_match = (label_obj == pred_obj)
                     except (ValueError, SyntaxError, TypeError):
                         # If literal evaluation fails, no match
