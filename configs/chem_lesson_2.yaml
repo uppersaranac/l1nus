@@ -8,8 +8,8 @@ questions:
     user_template: "What is the molecular formula of the molecule {kekulized_smiles}?\n"
     assistant_template: "The molecular formula is <answer>{molecular_formula}</answer>\n"
   - id: stereo_summary
-    user_template: "How many stereocenters and stereo bonds are in the molecule {kekulized_smiles}? The answer should be a list.\n"
-    assistant_template: "The number of stereocenters and stereo bonds is <answer>{stereo_summary}</answer>\n"
+    user_template: "How many stereocenters and stereo_bonds are in the molecule {kekulized_smiles} in JSON format?\n"
+    assistant_template: "The number of stereocenters and stereo_bonds is <answer>{stereo_summary}</answer>\n"
   - id: bond_counts
-    user_template: "What is the number of all bonds (including to hydrogen), double bonds, and triple bonds in the Kekulized molecule {kekulized_smiles}? The answer should be a list.\n"
-    assistant_template: "The number of all, double, and triple bonds is <answer>{bond_counts}</answer>\n"
+    user_template: "What is the number of all_bonds (including to hydrogen), double_bonds, and triple_bonds in the Kekulized molecule {kekulized_smiles} in JSON format?\n"
+    assistant_template: "The numbers of bonds are <answer>{bond_counts}</answer>\n"

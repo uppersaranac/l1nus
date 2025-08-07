@@ -183,17 +183,17 @@ def get_stereo_summary(mol: Any) -> dict[str, int]:
     Return a dict with stereocenter and stereo bond counts for the molecule.
 
     :param mol: RDKit molecule object
-    :return: {"stereocenter_count": int, "stereo_bond_count": int}
+    :return: {"stereocenters": int, "stereo_bonds": int}
     """
     if mol is None:
-        return {"stereocenter_count": 0, "stereo_bond_count": 0}
+        return {"stereocenters": 0, "stereo_bonds": 0}
     stereocenter_count = rdMolDescriptors.CalcNumAtomStereoCenters(mol)
     stereo_bond_count = sum(
         1
         for bond in mol.GetBonds()
         if bond.GetBondType() == Chem.rdchem.BondType.DOUBLE and bond.GetStereo() in [Chem.rdchem.BondStereo.STEREOE, Chem.rdchem.BondStereo.STEREOZ]
     )
-    return {"stereocenter_count": stereocenter_count, "stereo_bond_count": stereo_bond_count}
+    return {"stereocenters": stereocenter_count, "stereo_bonds": stereo_bond_count}
 
 def count_five_membered_rings(mol: Any) -> int:
     """
@@ -255,7 +255,7 @@ def longest_chain(mol: Any) -> dict[str, Any]:
     :return: {"atom_indices": list[int], "length": int}
     """
     if mol is None:
-        return {"longest_chain": []}
+        return {"longest_carbon_chain": []}
     ri = mol.GetRingInfo()
     ring_atoms = set()
     for ring in ri.AtomRings():
@@ -295,7 +295,7 @@ def longest_chain(mol: Any) -> dict[str, Any]:
         if len(candidate) > len(longest_chain):
             longest_chain = candidate
     longest_chain = sorted(longest_chain)
-    return {"longest_chain": longest_chain}
+    return {"longest_carbon_chain": longest_chain}
 
 def sorted_rings(mol: Any) -> dict[str, Any]:
     """
@@ -388,10 +388,10 @@ def get_bond_counts(mol: Any) -> dict[str, int]:
     Return bond counts for the molecule.
 
     :param mol: RDKit molecule object
-    :return: {"total_bonds": int, "double_bonds": int, "triple_bonds": int}
+    :return: {"all_bonds": int, "double_bonds": int, "triple_bonds": int}
     """
     if mol is None:
-        return {"total_bonds": 0, "double_bonds": 0, "triple_bonds": 0}
+        return {"all_bonds": 0, "double_bonds": 0, "triple_bonds": 0}
     mol_kek = copy.deepcopy(mol)
     try:
         Kekulize(mol_kek, clearAromaticFlags=True)
@@ -407,7 +407,7 @@ def get_bond_counts(mol: Any) -> dict[str, int]:
             double_bonds += 1
         elif bond.GetBondType() == Chem.rdchem.BondType.TRIPLE:
             triple_bonds += 1
-    return {"total_bonds": total_bonds, "double_bonds": double_bonds, "triple_bonds": triple_bonds}
+    return {"all_bonds": total_bonds, "double_bonds": double_bonds, "triple_bonds": triple_bonds}
 
 def get_ring_counts(mol: Any) -> dict[str, int]:
     """
