@@ -31,7 +31,7 @@ export ARGS="--limit 0 \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 2 \
 --gradient_accumulation_steps 8 \
---num_train_epochs 8 \
+--num_train_epochs 5 \
 --eval_steps 5000 \
 --eval_num_examples 64 \
 --num_example_preds 16 \
