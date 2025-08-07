@@ -493,6 +493,19 @@ def count_aliphatic_carbocycles(mol: Any) -> int:
         return 0
     return rdMolDescriptors.CalcNumAliphaticCarbocycles(mol)
 
+
+def get_molecular_formula(mol: Any) -> str:
+    """
+    Return the chemical formula for the molecule.
+    
+    :param mol: RDKit molecule object
+    :return: Chemical formula as a string (e.g., "C6H12O6")
+    """
+    if mol is None:
+        return ""
+    return rdMolDescriptors.CalcMolFormula(mol)
+
+
 # Function to calculate all properties for a set of molecules
 
 def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list[Any]]:
@@ -542,6 +555,7 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         "bond_counts": [],
         "ring_counts": [],
         "stereo_summary": [],
+        "molecular_formula": [],
     }
 
     for s in smiles_list:
@@ -584,5 +598,6 @@ def calculate_molecular_properties(smiles_list: Sequence[str]) -> dict[str, list
         properties["bond_counts"].append(get_bond_counts(mol))
         properties["ring_counts"].append(get_ring_counts(mol))
         properties["stereo_summary"].append(get_stereo_summary(mol))
+        properties["molecular_formula"].append(get_molecular_formula(mol))
 
     return properties

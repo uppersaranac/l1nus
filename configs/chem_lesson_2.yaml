@@ -4,9 +4,9 @@ system_prompt: "You are a chemist. Place answers in <answer> tags. Do not explai
 question_set: molecular_properties
 
 questions:
-  - id: hydrogen_count
-    user_template: "How many hydrogens are in the molecule {kekulized_smiles}?\n"
-    assistant_template: "The number of hydrogens is <answer>{hydrogen_count}</answer>\n"
+  - id: molecular_formula
+    user_template: "What is the molecular formula of the molecule {kekulized_smiles}?\n"
+    assistant_template: "The molecular formula is <answer>{molecular_formula}</answer>\n"
   - id: stereo_summary
     user_template: "How many stereocenters and stereo bonds are in the molecule {kekulized_smiles}? The answer should be a list.\n"
     assistant_template: "The number of stereocenters and stereo bonds is <answer>{stereo_summary}</answer>\n"
