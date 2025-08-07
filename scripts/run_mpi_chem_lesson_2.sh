@@ -36,7 +36,7 @@ export ARGS="--limit 0 \
 --eval_num_examples 64 \
 --num_example_preds 16 \
 --dataset_dir ~/data/pubchem/arrow/chem_lesson_2 \
---model_name Qwen/Qwen3-4B \
+--model_name ~/results/chem_lesson_1_309059/best_model \
 --use_position_weighting \
 "
 
