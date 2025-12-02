@@ -10,7 +10,19 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "accelerate",
+    "datasets",
+    "evaluate",
+    "numpy",
+    "pyarrow",
+    "pyyaml",
+    "rdkit-pypi",
+    "torch",
+    "tqdm",
     "transformers",
-    "evaluate",  
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
 ]
     
